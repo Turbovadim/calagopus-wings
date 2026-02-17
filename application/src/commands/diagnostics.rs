@@ -2,7 +2,7 @@ use clap::ArgMatches;
 use colored::Colorize;
 use dialoguer::{Confirm, theme::ColorfulTheme};
 use serde::Deserialize;
-use std::{collections::VecDeque, fmt::Write, path::Path, sync::Arc};
+use std::{fmt::Write, path::Path, sync::Arc};
 use tokio::{fs::File, io::AsyncBufReadExt};
 
 pub async fn diagnostics(
@@ -129,8 +129,9 @@ pub async fn diagnostics(
     write_header(&mut output, "latest wings-rs logs")?;
     match File::open(Path::new(&config.system.log_directory).join("wings.log")).await {
         Ok(file) => {
-            let mut reader = tokio::io::BufReader::new(file);
-            let mut all_lines = VecDeque::new();
+            let mut reader =
+                tokio::io::BufReader::new(crate::io::tail::async_tail(file, log_lines).await?);
+            let mut all_lines = Vec::new();
             let mut line = String::new();
             all_lines.reserve_exact(log_lines);
 
@@ -142,12 +143,7 @@ pub async fn diagnostics(
                 }
             } > 0
             {
-                if !line.trim().is_empty() {
-                    if all_lines.len() == log_lines {
-                        all_lines.pop_front();
-                    }
-                    all_lines.push_back(line.clone());
-                }
+                all_lines.push(line.clone());
                 line.clear();
             }
 

@@ -12,6 +12,7 @@ pub mod hash_reader;
 pub mod limited_reader;
 pub mod limited_writer;
 pub mod range_reader;
+pub mod tail;
 
 pub fn copy(
     reader: &mut (impl ?Sized + Read),

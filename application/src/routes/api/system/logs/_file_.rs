@@ -7,8 +7,15 @@ mod get {
         response::{ApiResponse, ApiResponseResult},
         routes::{ApiError, GetState},
     };
-    use axum::extract::Path;
+    use axum::extract::{Path, Query};
+    use serde::Deserialize;
     use tokio::io::AsyncRead;
+    use utoipa::ToSchema;
+
+    #[derive(ToSchema, Deserialize)]
+    pub struct Params {
+        lines: Option<usize>,
+    }
 
     #[utoipa::path(get, path = "/", responses(
         (status = OK, body = String),
@@ -19,16 +26,22 @@ mod get {
             description = "The log file name",
             example = "wings.log",
         ),
+        (
+            "lines" = Option<usize>, Query,
+            description = "The number of lines to tail from the log file",
+            example = "100",
+        ),
     ))]
     pub async fn route(
         state: GetState,
         Path(file_path): Path<compact_str::CompactString>,
+        Query(params): Query<Params>,
     ) -> ApiResponseResult {
         if file_path.contains("..") {
             return ApiResponse::error("log file not found").ok();
         }
 
-        let file = match tokio::fs::File::open(
+        let mut file = match tokio::fs::File::open(
             std::path::Path::new(&state.config.system.log_directory).join(&file_path),
         )
         .await
@@ -38,12 +51,22 @@ mod get {
         };
 
         let reader: Box<dyn AsyncRead + Send + Unpin> = if file_path.ends_with(".gz") {
-            Box::new(AsyncCompressionReader::new_mt(
+            let gz_reader = AsyncCompressionReader::new_mt(
                 file.into_std().await,
                 crate::io::compression::CompressionType::Gz,
                 state.config.api.file_decompression_threads,
-            ))
+            );
+
+            if let Some(lines) = params.lines {
+                Box::new(crate::io::tail::async_tail_stream(gz_reader, lines).await?)
+            } else {
+                Box::new(gz_reader)
+            }
         } else {
+            if let Some(lines) = params.lines {
+                file = crate::io::tail::async_tail(file, lines).await?;
+            }
+
             Box::new(file)
         };
 

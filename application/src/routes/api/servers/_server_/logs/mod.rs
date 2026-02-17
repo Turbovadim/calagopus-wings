@@ -33,8 +33,8 @@ mod get {
             example = "100",
         ),
     ))]
-    pub async fn route(server: GetServer, Query(data): Query<Params>) -> ApiResponseResult {
-        let mut log_stream = server.read_log(data.lines).await;
+    pub async fn route(server: GetServer, Query(params): Query<Params>) -> ApiResponseResult {
+        let mut log_stream = server.read_log(params.lines).await;
 
         let (logs_reader, mut logs_writer) = tokio::io::simplex(crate::BUFFER_SIZE);
 
@@ -44,6 +44,8 @@ mod get {
                     break;
                 }
             }
+
+            let _ = logs_writer.shutdown().await;
         });
 
         ApiResponse::new_stream(logs_reader).ok()
