@@ -24,6 +24,7 @@ use crate::{
 use chrono::{Datelike, Timelike};
 use compact_str::ToCompactString;
 use serde::Deserialize;
+use serde_default::DefaultFromSerde;
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -45,11 +46,13 @@ struct ResticSnapshot {
     short_id: String,
     tags: Vec<compact_str::CompactString>,
     paths: Vec<compact_str::CompactString>,
+    #[serde(default)]
     summary: ResticSnapshotSummary,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, DefaultFromSerde)]
 struct ResticSnapshotSummary {
+    #[serde(default)]
     total_bytes_processed: u64,
 }
 
