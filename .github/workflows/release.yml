@@ -82,13 +82,15 @@ jobs:
         with:
           path: artifacts
 
-      - name: Determine if pre-release
-        id: check_prerelease
+      - name: Determine if pre-release and strip prefix
+        id: release_info
         run: |
           RAW_TAG="${{ github.ref_name }}"
           VERSION="${RAW_TAG#release-}"
-
-          # If the remaining version string contains a hyphen, it's a pre-release
+          
+          # Output the clean version to use as the Release Title
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
           if [[ "$VERSION" == *-* ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           else
@@ -98,8 +100,9 @@ jobs:
       - name: Create Draft Release
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ steps.release_info.outputs.version }}
           draft: true
-          prerelease: ${{ steps.check_prerelease.outputs.is_prerelease == 'true' }}
+          prerelease: ${{ steps.release_info.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
           files: artifacts/*/*
 
