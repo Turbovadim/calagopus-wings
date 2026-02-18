@@ -20,7 +20,17 @@ pub use payload::Payload;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GIT_COMMIT: &str = env!("CARGO_GIT_COMMIT");
 pub const GIT_BRANCH: &str = env!("CARGO_GIT_BRANCH");
+pub const TARGET: &str = env!("CARGO_TARGET");
+
 pub const BUFFER_SIZE: usize = 32 * 1024;
+
+pub fn full_version() -> String {
+    if GIT_BRANCH == "unknown" {
+        VERSION.to_string()
+    } else {
+        format!("{VERSION}:{GIT_COMMIT}@{GIT_BRANCH}")
+    }
+}
 
 pub fn spawn_blocking_handled<
     F: FnOnce() -> Result<(), E> + Send + 'static,

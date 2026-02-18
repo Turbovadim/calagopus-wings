@@ -6,7 +6,6 @@ use axum::{
     middleware::Next,
     response::IntoResponse,
 };
-use clap::{Arg, Command};
 use colored::Colorize;
 use russh::{keys::ssh_key::rand_core::OsRng, server::Server};
 use std::{net::SocketAddr, path::Path, sync::Arc, time::Instant};
@@ -17,136 +16,6 @@ use wings_rs::{response::ApiResponse, routes::GetState};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
-fn cli() -> Command {
-    Command::new("wings-rs")
-        .about(
-            "The API server allowing programmatic control of game servers for Calagopus/Pterodactyl Panel.",
-        )
-        .allow_external_subcommands(true)
-        .arg(
-            Arg::new("config")
-                .help("set the location for the configuration file")
-                .num_args(1)
-                .short('c')
-                .long("config")
-                .alias("config-file")
-                .alias("config-path")
-                .default_value("/etc/pterodactyl/config.yml")
-                .global(true)
-                .required(false),
-        )
-        .arg(
-            Arg::new("debug")
-                .help("pass in order to run wings in debug mode")
-                .num_args(0)
-                .short('d')
-                .long("debug")
-                .default_value("false")
-                .value_parser(clap::value_parser!(bool))
-                .global(true)
-                .required(false),
-        )
-        .arg(
-            Arg::new("ignore_certificate_errors")
-                .help("ignore certificate verification errors when executing API calls")
-                .num_args(0)
-                .long("ignore-certificate-errors")
-                .default_value("false")
-                .value_parser(clap::value_parser!(bool))
-                .required(false),
-        )
-        .subcommand(
-            Command::new("version")
-                .about("Prints the current executable version and exits.")
-                .arg_required_else_help(false),
-        )
-        .subcommand(
-            Command::new("service-install")
-                .about("Installs the Wings service on the system.")
-                .arg(
-                    Arg::new("override")
-                        .help("set to true to override an existing service file")
-                        .num_args(0)
-                        .long("override")
-                        .default_value("false")
-                        .value_parser(clap::value_parser!(bool))
-                        .required(false),
-                )
-                .arg_required_else_help(false),
-        )
-        .subcommand(
-            Command::new("configure")
-                .about("Use a token to configure wings automatically.")
-                .arg(
-                    Arg::new("allow_insecure")
-                        .help("set to true to disable certificate checking")
-                        .num_args(0)
-                        .long("allow-insecure")
-                        .default_value("false")
-                        .value_parser(clap::value_parser!(bool))
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("override")
-                        .help("set to true to override an existing configuration for this node")
-                        .num_args(0)
-                        .long("override")
-                        .default_value("false")
-                        .value_parser(clap::value_parser!(bool))
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("node")
-                        .help("the ID of the node which will be connected to this daemon")
-                        .num_args(1)
-                        .short('n')
-                        .long("node")
-                        .value_parser(clap::value_parser!(usize))
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("panel_url")
-                        .help("the base URL for this daemon's panel")
-                        .num_args(1)
-                        .short('p')
-                        .long("panel-url")
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("join_data")
-                        .help("the join data from this daemon's panel")
-                        .num_args(1)
-                        .short('j')
-                        .long("join-data")
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("token")
-                        .help("the API key to use for fetching node information")
-                        .num_args(1)
-                        .short('t')
-                        .long("token")
-                        .required(false),
-                )
-                .arg_required_else_help(false),
-        )
-        .subcommand(
-            Command::new("diagnostics")
-                .about("Collect and report information about this Wings instance to assist in debugging.")
-                .arg(
-                    Arg::new("log_lines")
-                        .help("the number of log lines to include in the report")
-                        .num_args(1)
-                        .short('l')
-                        .long("log-lines")
-                        .default_value("500")
-                        .value_parser(clap::value_parser!(usize))
-                        .required(false),
-                )
-                .arg_required_else_help(false),
-        )
-}
 
 async fn handle_request(req: Request<Body>, next: Next) -> Result<Response<Body>, StatusCode> {
     tracing::info!(
@@ -236,78 +105,49 @@ async fn handle_cors(
 
 #[tokio::main]
 async fn main() {
-    let matches = cli().get_matches();
+    let cli = wings_rs::commands::CliCommandGroupBuilder::new(
+        "panel-rs",
+        "The panel server allowing control of game servers.",
+    );
 
-    let config_path = matches.get_one::<String>("config").unwrap();
+    let mut cli = wings_rs::commands::commands(cli);
+    let mut matches = cli.get_matches();
+
+    let config_path = matches.get_one::<String>("config").unwrap().clone();
     let debug = *matches.get_one::<bool>("debug").unwrap();
     let ignore_certificate_errors = matches
         .get_one::<bool>("ignore_certificate_errors")
         .copied()
         .unwrap_or(false);
     let config = wings_rs::config::Config::open(
-        config_path,
+        &config_path,
         debug,
         matches.subcommand().is_some(),
         ignore_certificate_errors,
     );
 
-    match matches.subcommand() {
-        Some(("version", sub_matches)) => std::process::exit(
-            match wings_rs::commands::version::version(
-                sub_matches,
-                config.as_ref().ok().map(|c| &c.0),
-            )
-            .await
-            {
-                Ok(exit_code) => exit_code,
-                Err(err) => {
-                    eprintln!("{}: {:#?}", "error while executing command".red(), err);
-                    1
+    match matches.remove_subcommand() {
+        Some((command, arg_matches)) => {
+            if let Some((func, arg_matches)) = cli.match_command(command, arg_matches) {
+                match func(config.as_ref().ok().map(|e| e.0.clone()), arg_matches).await {
+                    Ok(exit_code) => {
+                        drop(config);
+                        std::process::exit(exit_code);
+                    }
+                    Err(err) => {
+                        eprintln!(
+                            "{}: {:#?}",
+                            "an error occurred while running cli command".red(),
+                            err
+                        );
+                        std::process::exit(1);
+                    }
                 }
-            },
-        ),
-        Some(("service-install", sub_matches)) => std::process::exit(
-            match wings_rs::commands::service_install::service_install(
-                sub_matches,
-                config.as_ref().ok().map(|c| &c.0),
-            )
-            .await
-            {
-                Ok(exit_code) => exit_code,
-                Err(err) => {
-                    eprintln!("{}: {:#?}", "error while executing command".red(), err);
-                    1
-                }
-            },
-        ),
-        Some(("configure", sub_matches)) => std::process::exit(
-            match wings_rs::commands::configure::configure(
-                sub_matches,
-                config.as_ref().ok().map(|c| &c.0),
-            )
-            .await
-            {
-                Ok(exit_code) => exit_code,
-                Err(err) => {
-                    eprintln!("{}: {:#?}", "error while executing command".red(), err);
-                    1
-                }
-            },
-        ),
-        Some(("diagnostics", sub_matches)) => std::process::exit(
-            match wings_rs::commands::diagnostics::diagnostics(
-                sub_matches,
-                config.as_ref().ok().map(|c| &c.0),
-            )
-            .await
-            {
-                Ok(exit_code) => exit_code,
-                Err(err) => {
-                    eprintln!("{}: {:#?}", "error while executing command".red(), err);
-                    1
-                }
-            },
-        ),
+            } else {
+                cli.print_help();
+                std::process::exit(0);
+            }
+        }
         None => {
             tracing::info!(" __      ___ _ __   __ _ ___        ");
             tracing::info!(" \\ \\ /\\ / / | '_ \\ / _` / __|       ");
@@ -321,10 +161,6 @@ async fn main() {
             );
             tracing::info!("github.com/calagopus/wings\n");
         }
-        _ => {
-            cli().print_help().unwrap();
-            std::process::exit(0);
-        }
     }
 
     let (config, _guard) = match config {
@@ -335,6 +171,70 @@ async fn main() {
         }
     };
     tracing::info!("config loaded from {}", config_path);
+
+    wings_rs::spawn_handled(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let socket = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let socket = sntpc_net_tokio::UdpSocketWrapper::from(socket);
+        let context = sntpc::NtpContext::new(sntpc::StdTimestampGen::default());
+
+        let pool_ntp_addrs = tokio::net::lookup_host(("pool.ntp.org", 123))
+            .await
+            .context("failed to resolve pool.ntp.org")?;
+
+        let get_pool_time = async |addr: std::net::SocketAddr| {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                sntpc::get_time(addr, &socket, context),
+            )
+            .await?
+            .map_err(|err| std::io::Error::other(format!("{:?}", err)))
+            .context("failed to get time from pool.ntp.org")
+        };
+
+        for pool_ntp_addr in pool_ntp_addrs {
+            let pool_time = match get_pool_time(pool_ntp_addr).await {
+                Ok(time) => time,
+                Err(err) => {
+                    tracing::warn!("failed to get time from {:?}: {:?}", pool_ntp_addr, err);
+                    continue;
+                }
+            };
+
+            let duration = std::time::Duration::from_micros(pool_time.offset().unsigned_abs());
+
+            if duration > std::time::Duration::from_secs(5) {
+                if pool_time.offset().is_negative() {
+                    tracing::warn!(
+                        "system clock is behind by {:.2}s according to {:?}",
+                        duration.as_secs_f64(),
+                        pool_ntp_addr
+                    );
+                } else {
+                    tracing::warn!(
+                        "system clock is ahead by {:.2}s according to {:?}",
+                        duration.as_secs_f64(),
+                        pool_ntp_addr
+                    );
+                }
+            } else if pool_time.offset().is_negative() {
+                tracing::info!(
+                    "system clock is behind by {}ms according to {:?}",
+                    duration.as_millis(),
+                    pool_ntp_addr
+                );
+            } else {
+                tracing::info!(
+                    "system clock is ahead by {}ms according to {:?}",
+                    duration.as_millis(),
+                    pool_ntp_addr
+                );
+            }
+        }
+
+        Ok::<_, anyhow::Error>(())
+    });
 
     tracing::info!("connecting to docker");
     let docker =
@@ -388,12 +288,7 @@ async fn main() {
             Ok(_) => wings_rs::routes::AppContainerType::Unknown,
             Err(_) => wings_rs::routes::AppContainerType::None,
         },
-        version: format!(
-            "{}:{}@{}",
-            wings_rs::VERSION,
-            wings_rs::GIT_COMMIT,
-            wings_rs::GIT_BRANCH
-        ),
+        version: wings_rs::full_version(),
 
         config: Arc::clone(&config),
         docker: Arc::clone(&docker),
