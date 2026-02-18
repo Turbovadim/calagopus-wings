@@ -10,6 +10,7 @@ use serde::{
 use std::{
     borrow::Cow,
     collections::HashSet,
+    error::Error,
     marker::PhantomData,
     sync::{
         Arc,
@@ -267,6 +268,10 @@ impl ServerWebsocketHandler {
                 reason: reason.into(),
             })))
             .await
+            && err.source().is_none_or(|e| {
+                e.downcast_ref::<std::io::Error>()
+                    .is_none_or(|i| i.kind() != std::io::ErrorKind::BrokenPipe)
+            })
         {
             tracing::error!("failed to close websocket: {:?}", err);
         }
@@ -297,7 +302,12 @@ impl ServerWebsocketHandler {
             Message::Text(message.into())
         };
 
-        if let Err(err) = self.sender.lock().await.send(message).await {
+        if let Err(err) = self.sender.lock().await.send(message).await
+            && err.source().is_none_or(|e| {
+                e.downcast_ref::<std::io::Error>()
+                    .is_none_or(|i| i.kind() != std::io::ErrorKind::BrokenPipe)
+            })
+        {
             tracing::error!("failed to send websocket message: {:?}", err);
         }
     }
@@ -333,7 +343,12 @@ impl ServerWebsocketHandler {
             Message::Text(message.into())
         };
 
-        if let Err(err) = self.sender.lock().await.send(message).await {
+        if let Err(err) = self.sender.lock().await.send(message).await
+            && err.source().is_none_or(|e| {
+                e.downcast_ref::<std::io::Error>()
+                    .is_none_or(|i| i.kind() != std::io::ErrorKind::BrokenPipe)
+            })
+        {
             tracing::error!("failed to send websocket message: {:?}", err);
         }
     }
@@ -377,7 +392,12 @@ impl ServerWebsocketHandler {
             Message::Text(message.into())
         };
 
-        if let Err(err) = self.sender.lock().await.send(message).await {
+        if let Err(err) = self.sender.lock().await.send(message).await
+            && err.source().is_none_or(|e| {
+                e.downcast_ref::<std::io::Error>()
+                    .is_none_or(|i| i.kind() != std::io::ErrorKind::BrokenPipe)
+            })
+        {
             tracing::error!("failed to send websocket message: {:?}", err);
         }
     }
