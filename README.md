@@ -225,11 +225,12 @@ remote_query:
 - add support for the [check-file](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-extensions-00#section-3) sftp extension
 - add support for the [copy-file](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-extensions-00#section-6) sftp extension
 - add support for the [space-available](https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-extensions-00#section-4) sftp extension
-- add support for the [limits@openssh.com](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL#L597) sftp extension
-- add support for the [statvfs@openssh.com](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL#L510) sftp extension
-- add support for the [hardlink@openssh.com](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL#L478) sftp extension
-- add support for the [fsync@openssh.com](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL#L494) sftp extension
-- add support for the [lsetstat@openssh.com](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL#L508) sftp extension
+- add support for the [limits@openssh.com](https://github.com/openssh/openssh-portable/blob/5f98660c51e673f521e0216c7ed20205c4af10ed/PROTOCOL#L524) sftp extension
+- add support for the [statvfs@openssh.com](https://github.com/openssh/openssh-portable/blob/5f98660c51e673f521e0216c7ed20205c4af10ed/PROTOCOL#L437) sftp extension
+- add support for the [hardlink@openssh.com](https://github.com/openssh/openssh-portable/blob/5f98660c51e673f521e0216c7ed20205c4af10ed/PROTOCOL#L478) sftp extension
+- add support for the [fsync@openssh.com](https://github.com/openssh/openssh-portable/blob/5f98660c51e673f521e0216c7ed20205c4af10ed/PROTOCOL#L494) sftp extension
+- add support for the [lsetstat@openssh.com](https://github.com/openssh/openssh-portable/blob/5f98660c51e673f521e0216c7ed20205c4af10ed/PROTOCOL#L508) sftp extension
+- add support for the [users-groups-by-id@openssh.com](https://github.com/openssh/openssh-portable/blob/5f98660c51e673f521e0216c7ed20205c4af10ed/PROTOCOL#L643) sftp extension
 - properly support egg `file_denylist`
 
 ### backups
