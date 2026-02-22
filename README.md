@@ -180,6 +180,9 @@ remote_headers: {}
 remote_query:
   # how often to attempt retrying some important api requests (exponential backoff)
   retry_limit: 10
+
+# whether to ignore requests to upgrade wings remotely
+ignore_panel_wings_upgrades: false
 ```
 
 ## added features

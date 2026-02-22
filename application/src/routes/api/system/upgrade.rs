@@ -24,7 +24,9 @@ mod post {
     }
 
     #[derive(ToSchema, Serialize)]
-    struct Response {}
+    struct Response {
+        applied: bool,
+    }
 
     #[utoipa::path(post, path = "/", responses(
         (status = ACCEPTED, body = inline(Response)),
@@ -40,6 +42,10 @@ mod post {
             )
             .with_status(StatusCode::BAD_REQUEST)
             .ok();
+        }
+
+        if state.config.ignore_panel_wings_upgrades {
+            return ApiResponse::new_serialized(Response { applied: false }).ok();
         }
 
         let current_exe = std::env::current_exe()?;
@@ -146,7 +152,7 @@ mod post {
             }
         });
 
-        ApiResponse::new_serialized(Response {})
+        ApiResponse::new_serialized(Response { applied: true })
             .with_status(StatusCode::ACCEPTED)
             .ok()
     }

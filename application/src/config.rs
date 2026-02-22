@@ -877,6 +877,8 @@ nestify::nest! {
         pub allow_cors_private_network: bool,
         #[serde(default)]
         pub ignore_panel_config_updates: bool,
+        #[serde(default)]
+        pub ignore_panel_wings_upgrades: bool,
     }
 }
 
