@@ -37,6 +37,7 @@ mod get {
     #[derive(ToSchema, Serialize)]
     struct Response<'a> {
         version: &'a str,
+        local_time: chrono::DateTime<chrono::Local>,
         container_type: crate::routes::AppContainerType,
 
         #[schema(inline)]
@@ -88,6 +89,7 @@ mod get {
 
         ApiResponse::new_serialized(Response {
             version: &state.version,
+            local_time: chrono::Local::now(),
             container_type: state.container_type,
             cpu: ResponseCpu {
                 name: cpu.name(),
