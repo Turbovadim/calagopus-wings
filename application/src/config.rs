@@ -853,6 +853,7 @@ nestify::nest! {
             pub line_reset_interval: u64,
         },
 
+        #[serde(default)]
         pub remote: String,
         #[serde(default)]
         #[schema(inline)]
@@ -992,7 +993,7 @@ impl Config {
         config.save()?;
 
         if debug {
-            config.unsafe_mut().debug = true;
+            config.debug = true;
         }
 
         tracing::subscriber::set_global_default(
@@ -1012,8 +1013,6 @@ impl Config {
                 })
                 .finish(),
         )?;
-
-        config.validate()?;
 
         Ok((Arc::new(config), ConfigGuard(guard, stdout_guard)))
     }
@@ -1081,7 +1080,7 @@ impl Config {
         ) && !self.docker.delete_container_on_stop
         {
             tracing::warn!(
-                "you have enabled FUSE quota disk limiting, but also disabled deleting containers on stop. This can cause issues if you try manually starting things. this setup is not recommended."
+                "you have enabled FUSEquota disk limiting, but also disabled deleting containers on stop. This can cause issues if you try manually starting things. this setup is not recommended."
             );
         }
         if matches!(
@@ -1091,15 +1090,27 @@ impl Config {
         {
             for _ in 0..5 {
                 tracing::error!(
-                    "you have enabled FUSE quota disk limiting while running in a container. this setup is NOT recommended and WILL cause issues when the container recreates."
+                    "you have enabled FUSEquota disk limiting while running in a container. this setup is NOT recommended and WILL cause issues when the container recreates."
                 );
             }
 
             tracing::info!("waiting 10 seconds to allow you to read the above message...");
-            if std::env::var("ALLOW_FUSE_QUOTA_CONTAINER_USAGE").is_err() {
+            if std::env::var("ALLOW_FUSEQUOTA_CONTAINER_USAGE").is_err() {
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
             tracing::warn!("you are treading on thin ice. proceed at your own risk.");
+        }
+
+        if self.remote.is_empty() {
+            return Err(anyhow::anyhow!(
+                "invalid remote configuration, cannot connect to panel without a remote"
+            ));
+        }
+
+        if !self.remote.starts_with("http://") && !self.remote.starts_with("https://") {
+            return Err(anyhow::anyhow!(
+                "invalid remote configuration, cannot connect to panel without http:// or https:// protocol"
+            ));
         }
 
         // Do not allow directory paths with less than 1 segment (e.g. "/")

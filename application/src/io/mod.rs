@@ -42,8 +42,8 @@ pub fn copy_shared(
 }
 
 pub fn copy_file_progress(
-    reader: &mut (impl AsFd + std::io::Read + ?Sized),
-    writer: &mut (impl AsFd + std::io::Write + ?Sized),
+    reader: &mut (impl AsFd + Read + ?Sized),
+    writer: &mut (impl AsFd + Write + ?Sized),
     mut progress: impl FnMut(usize) -> Result<(), std::io::Error>,
     listener: abort::AbortListener,
 ) -> Result<u64, std::io::Error> {

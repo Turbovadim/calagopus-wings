@@ -9,6 +9,7 @@ use cap_std::fs::Metadata;
 use compact_str::ToCompactString;
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     hint::unreachable_unchecked,
     ops::Deref,
     os::fd::AsFd,
@@ -903,7 +904,7 @@ impl Filesystem {
     /// Returns `true` if allocation was successful, `false` if it would exceed disk limit
     pub async fn async_allocate_in_path_iterator(
         &self,
-        path: impl IntoIterator<Item = impl AsRef<str>>,
+        path: impl IntoIterator<Item = impl AsRef<str> + Debug> + Debug,
         delta: i64,
         ignorant: bool,
     ) -> bool {
@@ -949,7 +950,7 @@ impl Filesystem {
     /// Returns `true` if allocation was successful, `false` if it would exceed disk limit
     pub fn allocate_in_path_iterator(
         &self,
-        path: impl IntoIterator<Item = impl AsRef<str>>,
+        path: impl IntoIterator<Item = impl AsRef<str> + Debug> + Debug,
         delta: i64,
         ignorant: bool,
     ) -> bool {

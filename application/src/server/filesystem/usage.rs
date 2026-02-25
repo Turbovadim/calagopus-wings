@@ -1,7 +1,7 @@
 use compact_str::ToCompactString;
-use std::{iter::Peekable, path::Path};
+use std::{fmt::Debug, iter::Peekable, path::Path};
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct UsedSpace {
     real: u64,
     apparent: u64,
@@ -53,7 +53,7 @@ impl UsedSpace {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SpaceDelta {
     pub real: i64,
     pub apparent: i64,
@@ -136,6 +136,7 @@ impl DiskUsage {
         Some(current.space)
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn update_size(&mut self, path: &Path, delta: SpaceDelta) {
         if crate::unlikely(path == Path::new("") || path == Path::new("/")) {
             return;
@@ -146,6 +147,8 @@ impl DiskUsage {
             let key = component.as_os_str().to_str().unwrap_or_default();
             let entry = current.upsert_entry(key);
 
+            tracing::debug!(?component, "applying path delta");
+
             if delta.real >= 0 {
                 entry.space.add_real(delta.real as u64);
             } else {
@@ -161,15 +164,18 @@ impl DiskUsage {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn update_size_iterator(
         &mut self,
-        path: impl IntoIterator<Item = impl AsRef<str>>,
+        path: impl IntoIterator<Item = impl AsRef<str> + Debug> + Debug,
         delta: SpaceDelta,
     ) {
         let mut current = self;
         for component in path {
             let entry = current.upsert_entry(component.as_ref());
 
+            tracing::debug!(?component, "applying path delta");
+
             if delta.real >= 0 {
                 entry.space.add_real(delta.real as u64);
             } else {
@@ -185,6 +191,7 @@ impl DiskUsage {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn remove_path(&mut self, path: &Path) -> Option<DiskUsage> {
         if crate::unlikely(path == Path::new("") || path == Path::new("/")) {
             return None;
@@ -200,8 +207,15 @@ impl DiskUsage {
         let component = components.next()?;
         let name = component.as_os_str().to_str().unwrap_or_default();
 
+        tracing::debug!(?component, "applying path delta");
+
         if components.peek().is_none() {
-            return self.remove_entry(name);
+            let removed = self.remove_entry(name)?;
+
+            self.space.sub_real(removed.space.get_real());
+            self.space.sub_apparent(removed.space.get_apparent());
+
+            return Some(removed);
         }
 
         if let Some(child) = self.get_entry(name)
@@ -220,9 +234,10 @@ impl DiskUsage {
         self.entries.clear();
     }
 
+    #[tracing::instrument(skip(self, source_dir))]
     pub fn add_directory(
         &mut self,
-        target_path: &[impl AsRef<str>],
+        target_path: &[impl AsRef<str> + Debug],
         source_dir: DiskUsage,
     ) -> bool {
         if crate::unlikely(target_path.is_empty()) {
@@ -235,6 +250,8 @@ impl DiskUsage {
 
         let mut current = self;
         for component in parents {
+            tracing::debug!(?component, "applying path delta");
+
             current.space.add_real(source_dir.space.get_real());
             current.space.add_apparent(source_dir.space.get_apparent());
 
