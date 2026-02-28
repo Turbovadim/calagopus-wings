@@ -108,6 +108,7 @@ mod post {
                 crate::server::filesystem::operations::FilesystemOperation::Decompress {
                     path: source,
                     destination_path: root.clone(),
+                    start_time: chrono::Utc::now(),
                     progress: progress.clone(),
                     total: total.clone(),
                 },

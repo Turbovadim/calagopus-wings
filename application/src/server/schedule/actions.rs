@@ -863,6 +863,7 @@ impl ScheduleAction {
                         crate::server::filesystem::operations::FilesystemOperation::Copy {
                             path: path.clone(),
                             destination_path: file_name,
+                            start_time: chrono::Utc::now(),
                             progress: progress.clone(),
                             total: total.clone(),
                         },
@@ -1133,6 +1134,7 @@ impl ScheduleAction {
                             path: PathBuf::from(&raw_root),
                             files: files.iter().map(PathBuf::from).collect(),
                             destination_path: PathBuf::from(&raw_root).join(file_name),
+                            start_time: chrono::Utc::now(),
                             progress: progress.clone(),
                             total: total.clone(),
                         },

@@ -117,6 +117,7 @@ mod post {
                     path: PathBuf::from(&data.root),
                     files: data.files.iter().map(PathBuf::from).collect(),
                     destination_path: PathBuf::from(&data.root).join(archive_name),
+                    start_time: chrono::Utc::now(),
                     progress: progress.clone(),
                     total: total.clone(),
                 },

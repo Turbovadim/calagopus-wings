@@ -172,6 +172,7 @@ mod post {
                 crate::server::filesystem::operations::FilesystemOperation::Copy {
                     path: path.clone(),
                     destination_path: file_name,
+                    start_time: chrono::Utc::now(),
                     progress: progress.clone(),
                     total: total.clone(),
                 },

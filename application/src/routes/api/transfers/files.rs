@@ -147,6 +147,7 @@ mod post {
                     files: root_files.into_iter().map(PathBuf::from).collect(),
                     destination_server: server.uuid,
                     destination_path: PathBuf::from(&payload.destination_path),
+                    start_time: chrono::Utc::now(),
                     progress: progress.clone(),
                     total: total.clone(),
                 },

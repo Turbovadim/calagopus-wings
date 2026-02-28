@@ -67,6 +67,7 @@ mod post {
                 crate::server::filesystem::operations::FilesystemOperation::CopyMany {
                     path: PathBuf::from(&data.root),
                     files: data.files.clone(),
+                    start_time: chrono::Utc::now(),
                     progress: progress.clone(),
                     total: total.clone(),
                 },

@@ -22,6 +22,7 @@ pub enum FilesystemOperation {
         files: Vec<PathBuf>,
         destination_path: PathBuf,
 
+        start_time: chrono::DateTime<chrono::Utc>,
         #[serde(serialize_with = "serialize_arc")]
         progress: Arc<AtomicU64>,
         #[serde(serialize_with = "serialize_arc")]
@@ -31,6 +32,7 @@ pub enum FilesystemOperation {
         path: PathBuf,
         destination_path: PathBuf,
 
+        start_time: chrono::DateTime<chrono::Utc>,
         #[serde(serialize_with = "serialize_arc")]
         progress: Arc<AtomicU64>,
         #[serde(serialize_with = "serialize_arc")]
@@ -39,6 +41,7 @@ pub enum FilesystemOperation {
     Pull {
         destination_path: PathBuf,
 
+        start_time: chrono::DateTime<chrono::Utc>,
         #[serde(serialize_with = "serialize_arc")]
         progress: Arc<AtomicU64>,
         #[serde(serialize_with = "serialize_arc")]
@@ -48,6 +51,7 @@ pub enum FilesystemOperation {
         path: PathBuf,
         destination_path: PathBuf,
 
+        start_time: chrono::DateTime<chrono::Utc>,
         #[serde(serialize_with = "serialize_arc")]
         progress: Arc<AtomicU64>,
         #[serde(serialize_with = "serialize_arc")]
@@ -57,6 +61,7 @@ pub enum FilesystemOperation {
         path: PathBuf,
         files: Vec<crate::models::CopyFile>,
 
+        start_time: chrono::DateTime<chrono::Utc>,
         #[serde(serialize_with = "serialize_arc")]
         progress: Arc<AtomicU64>,
         #[serde(serialize_with = "serialize_arc")]
@@ -69,6 +74,7 @@ pub enum FilesystemOperation {
         destination_server: uuid::Uuid,
         destination_path: PathBuf,
 
+        start_time: chrono::DateTime<chrono::Utc>,
         #[serde(serialize_with = "serialize_arc")]
         progress: Arc<AtomicU64>,
         #[serde(serialize_with = "serialize_arc")]

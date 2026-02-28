@@ -136,7 +136,6 @@ impl DiskUsage {
         Some(current.space)
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn update_size(&mut self, path: &Path, delta: SpaceDelta) {
         if crate::unlikely(path == Path::new("") || path == Path::new("/")) {
             return;
@@ -146,8 +145,6 @@ impl DiskUsage {
         for component in path.components() {
             let key = component.as_os_str().to_str().unwrap_or_default();
             let entry = current.upsert_entry(key);
-
-            tracing::debug!(?component, "applying path delta");
 
             if delta.real >= 0 {
                 entry.space.add_real(delta.real as u64);

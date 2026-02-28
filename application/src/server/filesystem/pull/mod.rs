@@ -252,6 +252,7 @@ impl Download {
             .add_operation(
                 super::operations::FilesystemOperation::Pull {
                     destination_path: self.destination.clone(),
+                    start_time: chrono::Utc::now(),
                     progress: self.progress.clone(),
                     total: Arc::new(AtomicU64::new(self.total)),
                 },
