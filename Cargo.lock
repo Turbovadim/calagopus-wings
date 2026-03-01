@@ -2607,9 +2607,9 @@ dependencies = [
 
 [[package]]
 name = "libz-ng-sys"
-version = "1.1.24"
+version = "1.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ff028f347c6ed1b98e17cede6f36b5e2706afde598914c87d2da04f86029ba"
+checksum = "7bf914b7dd154ca9193afec311d8e39345c1bd93b48b3faa77329f0db8f553c0"
 dependencies = [
  "cmake",
  "libc",
@@ -5901,7 +5901,7 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "wings-rs"
-version = "1.0.0-pre.2"
+version = "1.0.0-pre.3"
 dependencies = [
  "accept-header",
  "ansi_term",
@@ -5937,6 +5937,7 @@ dependencies = [
  "ignore",
  "infer",
  "jwt",
+ "libz-ng-sys",
  "lzma-rust2",
  "lzzzz",
  "md5 0.8.0",
