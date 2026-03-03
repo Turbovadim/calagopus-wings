@@ -1,9 +1,8 @@
-use std::sync::Arc;
-
 use super::{WebsocketEvent, WebsocketJwtPayload, WebsocketMessage};
 use crate::server::{permissions::Permission, websocket::ServerWebsocketHandler};
 use axum::extract::ws::Message;
 use compact_str::ToCompactString;
+use std::sync::Arc;
 
 pub enum JwtError {
     CloseSocket,

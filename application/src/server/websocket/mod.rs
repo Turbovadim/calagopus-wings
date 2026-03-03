@@ -360,7 +360,7 @@ impl ServerWebsocketHandler {
         }) {
             format!("{}", message.into())
         } else {
-            "An unexpected error occurred while starting the server. Please contact an Administrator.".into()
+            "An unexpected error occurred. Please contact an Administrator.".into()
         };
 
         let message = WebsocketMessage::new(

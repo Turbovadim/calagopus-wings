@@ -23,12 +23,13 @@ impl<'a, W: Write + Send + 'static> CompressionWriter<'a, W> {
         compression_type: CompressionType,
         compression_level: CompressionLevel,
         threads: usize,
-    ) -> Result<Self, anyhow::Error> {
+    ) -> std::io::Result<Self> {
         Ok(match compression_type {
             CompressionType::None => CompressionWriter::None(writer),
             CompressionType::Gz => CompressionWriter::Gz(
                 gzp::par::compress::ParCompressBuilder::new()
-                    .num_threads(threads)?
+                    .num_threads(threads)
+                    .map_err(std::io::Error::other)?
                     .compression_level(gzp::Compression::new(compression_level.to_deflate_level()))
                     .from_writer(writer),
             ),
@@ -179,7 +180,7 @@ impl AsyncCompressionWriter {
             ) {
                 Ok(stream) => stream,
                 Err(err) => {
-                    let _ = inner_error_sender.send(std::io::Error::other(err));
+                    let _ = inner_error_sender.send(err);
                     return;
                 }
             };

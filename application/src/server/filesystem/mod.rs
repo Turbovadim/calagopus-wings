@@ -134,6 +134,7 @@ impl Filesystem {
                             let tmp_disk_usage =
                                 Arc::new(Mutex::new(Some(usage::DiskUsage::default())));
                             let seen_inodes = Arc::new(RwLock::new(HashSet::new()));
+                            let total_entries = Arc::new(AtomicU64::new(0));
                             let total_size = Arc::new(AtomicU64::new(0));
                             let apparent_total_size = Arc::new(AtomicU64::new(0));
 
@@ -144,6 +145,7 @@ impl Filesystem {
                                     config.system.disk_check_threads,
                                     Arc::new({
                                         let total_size = Arc::clone(&total_size);
+                                        let total_entries = Arc::clone(&total_entries);
                                         let apparent_total_size = Arc::clone(&apparent_total_size);
                                         let disk_usage = Arc::clone(&tmp_disk_usage);
                                         let seen_inodes = Arc::clone(&seen_inodes);
@@ -151,6 +153,7 @@ impl Filesystem {
 
                                         move |_, path: PathBuf| {
                                             let total_size = Arc::clone(&total_size);
+                                            let total_entries = Arc::clone(&total_entries);
                                             let apparent_total_size =
                                                 Arc::clone(&apparent_total_size);
                                             let disk_usage = Arc::clone(&disk_usage);
@@ -166,6 +169,8 @@ impl Filesystem {
                                                     Err(_) => return Ok(()),
                                                 };
                                                 let size = metadata.len();
+
+                                                total_entries.fetch_add(1, Ordering::Relaxed);
 
                                                 #[cfg(unix)]
                                                 {
@@ -241,6 +246,7 @@ impl Filesystem {
 
                             tracing::debug!(
                                 path = %cap_filesystem.base_path.display(),
+                                total_entries = total_entries.load(Ordering::Relaxed),
                                 "{} bytes disk usage",
                                 disk_usage_cached.load(Ordering::Relaxed)
                             );

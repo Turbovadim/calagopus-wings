@@ -1,6 +1,10 @@
 use crate::server::filesystem::virtualfs::IsIgnoredFn;
-use std::{collections::VecDeque, path::PathBuf, sync::Arc};
-use tokio::sync::{RwLock, Semaphore};
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
+use tokio::sync::Semaphore;
 
 #[derive(Clone, Copy, Debug)]
 pub enum FileType {
@@ -243,7 +247,7 @@ impl AsyncWalkDir {
                     let error = Arc::clone(&error);
                     let func = Arc::clone(&func);
 
-                    if crate::unlikely(error.read().await.is_some()) {
+                    if crate::unlikely(error.read().unwrap().is_some()) {
                         break;
                     }
 
@@ -256,7 +260,7 @@ impl AsyncWalkDir {
                         match func(file_type, path).await {
                             Ok(_) => {}
                             Err(err) => {
-                                *error.write().await = Some(err);
+                                *error.write().unwrap() = Some(err);
                             }
                         }
                     });
@@ -267,7 +271,7 @@ impl AsyncWalkDir {
 
         semaphore.acquire_many(threads as u32).await.ok();
 
-        if let Some(err) = error.write().await.take() {
+        if let Some(err) = error.write().unwrap().take() {
             return Err(err);
         }
 

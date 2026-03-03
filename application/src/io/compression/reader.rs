@@ -80,7 +80,7 @@ impl<'a, R: Read + Seek> CompressionReaderMt<'a, R> {
         reader: R,
         compression_type: CompressionType,
         threads: usize,
-    ) -> Result<Self, anyhow::Error> {
+    ) -> std::io::Result<Self> {
         Ok(match compression_type {
             CompressionType::None => CompressionReaderMt::None(reader),
             CompressionType::Gz => {
@@ -170,7 +170,7 @@ impl AsyncCompressionReader {
             let mut stream = match CompressionReaderMt::new(reader, compression_type, threads) {
                 Ok(stream) => stream,
                 Err(err) => {
-                    let _ = inner_error_sender.send(std::io::Error::other(err));
+                    let _ = inner_error_sender.send(err);
                     return;
                 }
             };
