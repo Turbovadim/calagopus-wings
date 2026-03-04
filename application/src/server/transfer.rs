@@ -514,6 +514,20 @@ impl OutgoingServerTransfer {
 
                         Self::log(&server, &progress_log);
 
+                        server
+                            .websocket
+                            .send(super::websocket::WebsocketMessage::new(
+                                super::websocket::WebsocketEvent::ServerTransferProgress,
+                                [serde_json::to_string(&crate::models::Progress {
+                                    progress: current_bytes_archived,
+                                    total: total_bytes
+                                })
+                                .unwrap()
+                                .into()]
+                                .into(),
+                            ))
+                            .ok();
+
                         tracing::debug!(
                             server = %server.uuid,
                             "Progress: {}, Archive: {} of {} ({}/s), Network: {} ({}/s), ETA: {}",

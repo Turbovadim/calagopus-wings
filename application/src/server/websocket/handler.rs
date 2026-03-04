@@ -217,7 +217,8 @@ pub async fn handle_ws(
                                                     continue;
                                                 }
                                             }
-                                            websocket::WebsocketEvent::ServerTransferLogs => {
+                                            websocket::WebsocketEvent::ServerTransferLogs
+                                            | websocket::WebsocketEvent::ServerTransferProgress => {
                                                 if !socket_jwt
                                                     .permissions
                                                     .has_permission(Permission::AdminWebsocketTransfer)

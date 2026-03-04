@@ -104,6 +104,8 @@ pub enum WebsocketEvent {
     ServerTransferLogs,
     #[serde(rename = "transfer status")]
     ServerTransferStatus,
+    #[serde(rename = "transfer progress")]
+    ServerTransferProgress,
     #[serde(rename = "schedule started")]
     ServerScheduleStarted,
     #[serde(rename = "schedule step status")]
