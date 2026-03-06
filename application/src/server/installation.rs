@@ -316,21 +316,20 @@ impl ServerInstaller {
                                             .server
                                             .app_state
                                             .docker
-                                            .attach_container::<String>(
+                                            .logs::<String>(
                                                 &container.id,
-                                                Some(bollard::container::AttachContainerOptions {
-                                                    stdout: Some(true),
-                                                    stderr: Some(true),
-                                                    stream: Some(true),
+                                                Some(bollard::container::LogsOptions {
+                                                    stdout: true,
+                                                    stderr: true,
+                                                    follow: true,
                                                     ..Default::default()
                                                 }),
-                                            )
-                                            .await?;
+                                            );
 
                                         let mut buffer = Vec::with_capacity(1024);
                                         let mut line_start = 0;
 
-                                        while let Some(Ok(data)) = stream.output.next().await {
+                                        while let Some(Ok(data)) = stream.next().await {
                                             buffer.extend_from_slice(&data.into_bytes());
 
                                             let mut search_start = line_start;

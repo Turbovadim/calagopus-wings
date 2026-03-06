@@ -61,6 +61,7 @@ nestify::nest! {
         pub invocation: compact_str::CompactString,
         pub skip_egg_scripts: bool,
 
+        pub entrypoint: Option<Vec<String>>,
         pub environment: HashMap<compact_str::CompactString, serde_json::Value>,
         #[serde(default)]
         pub labels: HashMap<String, String>,
@@ -583,6 +584,7 @@ impl ServerConfiguration {
             }),
             hostname: Some(self.uuid.to_string()),
             domainname: string_to_option(&config.docker.domainname),
+            entrypoint: self.entrypoint.clone(),
             image: Some(self.container.image.trim_end_matches('~').to_string()),
             env: Some(self.environment(config)),
             user: Some(if config.system.user.rootless.enabled {
