@@ -1,3 +1,5 @@
+![Calagopus Logo](https://calagopus.com/fulllogo.svg)
+
 # Calagopus Wings
 
 a rewrite of [pterodactyl wings](https://github.com/pterodactyl/wings) in the rust programming language. this rewrite aims to be 100% API compatible while implementing new features and better performance.
