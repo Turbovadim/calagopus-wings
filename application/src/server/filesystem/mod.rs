@@ -1148,18 +1148,20 @@ impl Filesystem {
             {
                 Ok(Ok(dir)) => {
                     *self.cap_filesystem.inner.write().await = Some(Arc::new(dir));
-                    if let Err(err) = self
-                        .app_state
-                        .inotify_manager
-                        .register_server_with_notifier(self.server_notifier.clone(), self.uuid)
-                        .await
-                    {
-                        tracing::error!(
-                            "error while trying to attach server inotify listener, falling back to regular scans: {}",
-                            err
-                        );
-                    } else {
-                        self.use_server_notifier.store(true, Ordering::Relaxed);
+                    if self.app_state.config.system.disk_check_use_inotify {
+                        if let Err(err) = self
+                            .app_state
+                            .inotify_manager
+                            .register_server_with_notifier(self.server_notifier.clone(), self.uuid)
+                            .await
+                        {
+                            tracing::error!(
+                                "error while trying to attach server inotify listener, falling back to regular scans: {}",
+                                err
+                            );
+                        } else {
+                            self.use_server_notifier.store(true, Ordering::Relaxed);
+                        }
                     }
                 }
                 Ok(Err(err)) => {
@@ -1198,18 +1200,20 @@ impl Filesystem {
             {
                 Ok(Ok(dir)) => {
                     *self.cap_filesystem.inner.write().await = Some(Arc::new(dir));
-                    if let Err(err) = self
-                        .app_state
-                        .inotify_manager
-                        .register_server_with_notifier(self.server_notifier.clone(), self.uuid)
-                        .await
-                    {
-                        tracing::error!(
-                            "error while trying to attach server inotify listener, falling back to regular scans: {}",
-                            err
-                        );
-                    } else {
-                        self.use_server_notifier.store(true, Ordering::Relaxed);
+                    if self.app_state.config.system.disk_check_use_inotify {
+                        if let Err(err) = self
+                            .app_state
+                            .inotify_manager
+                            .register_server_with_notifier(self.server_notifier.clone(), self.uuid)
+                            .await
+                        {
+                            tracing::error!(
+                                "error while trying to attach server inotify listener, falling back to regular scans: {}",
+                                err
+                            );
+                        } else {
+                            self.use_server_notifier.store(true, Ordering::Relaxed);
+                        }
                     }
                 }
                 Ok(Err(err)) => {
