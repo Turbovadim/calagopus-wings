@@ -216,15 +216,10 @@ impl Filesystem {
                                             };
                                             let size = metadata.len();
 
-                                            println!("scanning path: {}, size: {}", path.display(), size);
-
                                             let relative = match path.strip_prefix(dir) {
                                                 Ok(relative) => relative,
                                                 Err(_) => continue,
                                             };
-
-                                            println!("relative path: {:?}", relative);
-                                            println!("dir path: {}", dir.display());
 
                                             #[cfg(unix)]
                                             {
@@ -246,12 +241,9 @@ impl Filesystem {
                                             if metadata.is_dir() {
                                                 tmp_disk_usage.update_size(relative, (size as i64).into());
                                             } else if let Some(parent) = relative.parent() {
-                                                println!("{}: adding size {} to parent {:?} (relative path: {:?})", path.display(), size, parent, relative);
                                                 tmp_disk_usage.update_size(parent, (size as i64).into());
                                             }
                                         }
-
-                                        println!("{:?}", tmp_disk_usage);
 
                                         let mut disk_usage_write = disk_usage.write().await;
                                         disk_usage_write.remove_path(dir);
