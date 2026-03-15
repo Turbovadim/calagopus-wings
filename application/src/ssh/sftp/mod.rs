@@ -1043,9 +1043,11 @@ impl russh_sftp::server::Handler for SftpSession {
         let data = tokio::task::spawn_blocking({
             let file = Arc::clone(&handle.file);
 
-            let mut data_len = len;
+            let mut data_len = len.min(256 * 1024);
             if len == 32 * 1024 {
-                data_len = 32 * 1024 - 64;
+                // this is because some clients (hi cyberduck) send 32k read requests but actually expect 32k of data + some packet overhead
+                // if we send exactly 32k of data, the client will think the packet is malformed and kill the transfer...
+                data_len -= 64;
             }
 
             move || -> Result<Vec<u8>, std::io::Error> {

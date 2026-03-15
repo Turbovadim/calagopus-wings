@@ -60,16 +60,17 @@ pub struct Server {
 #[derive(ToSchema, Serialize)]
 pub struct DirectoryEntry {
     pub name: compact_str::CompactString,
-    pub created: chrono::DateTime<chrono::Utc>,
-    pub modified: chrono::DateTime<chrono::Utc>,
     pub mode: compact_str::CompactString,
     pub mode_bits: compact_str::CompactString,
     pub size: u64,
     pub size_physical: u64,
+    pub editable: bool,
     pub directory: bool,
     pub file: bool,
     pub symlink: bool,
     pub mime: &'static str,
+    pub created: chrono::DateTime<chrono::Utc>,
+    pub modified: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(ToSchema, Serialize)]

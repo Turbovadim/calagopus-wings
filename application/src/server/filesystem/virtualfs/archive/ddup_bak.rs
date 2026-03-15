@@ -56,6 +56,7 @@ impl EntryReaderExt for Option<Arc<ddup_bak::repository::Repository>> {
 pub struct VirtualDdupBakArchive {
     pub server: crate::server::Server,
     pub archive: Arc<ddup_bak::archive::Archive>,
+    pub archive_created: chrono::DateTime<chrono::Utc>,
     pub repository: Option<Arc<ddup_bak::repository::Repository>>,
 }
 
@@ -63,11 +64,13 @@ impl VirtualDdupBakArchive {
     pub fn new(
         server: crate::server::Server,
         archive: Arc<ddup_bak::archive::Archive>,
+        archive_created: chrono::DateTime<chrono::Utc>,
         repository: Option<Arc<ddup_bak::repository::Repository>>,
     ) -> Self {
         Self {
             server,
             archive,
+            archive_created,
             repository,
         }
     }
@@ -86,10 +89,20 @@ impl VirtualDdupBakArchive {
             tokio::task::spawn_blocking(move || ddup_bak::archive::Archive::open_file(file))
                 .await??;
 
-        Ok(Self::new(server, Arc::new(archive), None))
+        let metadata = server.filesystem.async_metadata(archive_path).await?;
+
+        Ok(Self::new(
+            server,
+            Arc::new(archive),
+            metadata
+                .created()
+                .map_or_else(|_| Default::default(), |dt| dt.into_std().into()),
+            None,
+        ))
     }
 
     fn ddup_bak_entry_to_directory_entry(
+        archive_created: &chrono::DateTime<chrono::Utc>,
         path: &Path,
         entry: &ddup_bak::archive::entries::Entry,
     ) -> DirectoryEntry {
@@ -143,7 +156,15 @@ impl VirtualDdupBakArchive {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into(),
-            created: chrono::DateTime::from_timestamp(0, 0).unwrap_or_default(),
+            mode: encode_mode(entry.mode().bits()),
+            mode_bits: compact_str::format_compact!("{:o}", entry.mode().bits() & 0o777),
+            size,
+            size_physical,
+            editable: entry.is_file() && mime != "application/octet-stream",
+            directory: entry.is_directory(),
+            file: entry.is_file(),
+            symlink: entry.is_symlink(),
+            mime,
             modified: chrono::DateTime::from_timestamp(
                 entry
                     .mtime()
@@ -153,14 +174,7 @@ impl VirtualDdupBakArchive {
                 0,
             )
             .unwrap_or_default(),
-            mode: encode_mode(entry.mode().bits()),
-            mode_bits: compact_str::format_compact!("{:o}", entry.mode().bits() & 0o777),
-            size,
-            size_physical,
-            directory: entry.is_directory(),
-            file: entry.is_file(),
-            symlink: entry.is_symlink(),
-            mime,
+            created: *archive_created,
         }
     }
 
@@ -389,7 +403,11 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
             .find_archive_entry(&path)
             .ok_or_else(|| anyhow::anyhow!(std::io::Error::from(rustix::io::Errno::NOENT)))?;
 
-        Ok(Self::ddup_bak_entry_to_directory_entry(&path, entry))
+        Ok(Self::ddup_bak_entry_to_directory_entry(
+            &self.archive_created,
+            &path,
+            entry,
+        ))
     }
 
     async fn async_directory_entry_buffer(
@@ -408,6 +426,7 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
         is_ignored: IsIgnoredFn,
     ) -> Result<DirectoryListing, anyhow::Error> {
         let archive = self.archive.clone();
+        let archive_created = self.archive_created;
         let path = path.as_ref().to_path_buf();
 
         let entries =
@@ -460,7 +479,11 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                                 .take(per_page)
                             {
                                 let path = path.join(entry.name());
-                                entries.push(Self::ddup_bak_entry_to_directory_entry(&path, entry));
+                                entries.push(Self::ddup_bak_entry_to_directory_entry(
+                                    &archive_created,
+                                    &path,
+                                    entry,
+                                ));
                             }
                         } else {
                             for entry in directory_entries
@@ -468,7 +491,11 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                                 .chain(other_entries.into_iter())
                             {
                                 let path = path.join(entry.name());
-                                entries.push(Self::ddup_bak_entry_to_directory_entry(&path, entry));
+                                entries.push(Self::ddup_bak_entry_to_directory_entry(
+                                    &archive_created,
+                                    &path,
+                                    entry,
+                                ));
                             }
                         }
 
@@ -522,7 +549,11 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                                 .take(per_page)
                             {
                                 let path = path.join(&dir.name).join(entry.name());
-                                entries.push(Self::ddup_bak_entry_to_directory_entry(&path, entry));
+                                entries.push(Self::ddup_bak_entry_to_directory_entry(
+                                    &archive_created,
+                                    &path,
+                                    entry,
+                                ));
                             }
                         } else {
                             for entry in directory_entries
@@ -530,7 +561,11 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                                 .chain(other_entries.into_iter())
                             {
                                 let path = path.join(&dir.name).join(entry.name());
-                                entries.push(Self::ddup_bak_entry_to_directory_entry(&path, entry));
+                                entries.push(Self::ddup_bak_entry_to_directory_entry(
+                                    &archive_created,
+                                    &path,
+                                    entry,
+                                ));
                             }
                         }
 

@@ -594,9 +594,17 @@ impl BackupExt for DdupBakBackup {
         &self,
         server: &crate::server::Server,
     ) -> Result<Arc<dyn VirtualReadableFilesystem>, anyhow::Error> {
+        let repository = get_repository(&server.app_state.config).await;
+        let path = repository.archive_path(&self.uuid.to_string());
+
+        let metadata = tokio::fs::metadata(&path).await?;
+
         Ok(Arc::new(VirtualDdupBakArchive::new(
             server.clone(),
             self.archive.clone(),
+            metadata
+                .created()
+                .map_or_else(|_| Default::default(), |dt| dt.into()),
             Some(get_repository(&server.app_state.config).await),
         )))
     }

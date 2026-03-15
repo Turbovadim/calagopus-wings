@@ -4,6 +4,7 @@ use crate::{
         counting_reader::CountingReader,
     },
     models::DirectoryEntry,
+    routes::MimeCacheValue,
     server::filesystem::{
         archive::{
             StreamableArchiveFormat, multi_reader::MultiReader, zip_entry_get_modified_time,
@@ -60,12 +61,17 @@ impl<R: Read + Seek + Clone> BetterZipArchiveExt<R> for zip::ZipArchive<R> {
 pub struct VirtualZipArchive {
     pub server: crate::server::Server,
     pub archive: zip::ZipArchive<MultiReader>,
-    pub mime_cache: moka::sync::Cache<usize, &'static str>,
+    pub archive_created: chrono::DateTime<chrono::Utc>,
+    pub mime_cache: moka::sync::Cache<usize, MimeCacheValue>,
     pub sizes: Arc<Vec<(UsedSpace, PathBuf)>>,
 }
 
 impl VirtualZipArchive {
-    pub fn new(server: crate::server::Server, mut archive: zip::ZipArchive<MultiReader>) -> Self {
+    pub fn new(
+        server: crate::server::Server,
+        mut archive: zip::ZipArchive<MultiReader>,
+        archive_created: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
         let names = archive
             .file_names()
             .map(|name| name.to_string())
@@ -90,6 +96,7 @@ impl VirtualZipArchive {
         Self {
             server,
             archive,
+            archive_created,
             mime_cache: moka::sync::Cache::new(10240),
             sizes: Arc::new(sizes),
         }
@@ -115,13 +122,22 @@ impl VirtualZipArchive {
         )
         .await??;
 
-        Ok(Self::new(server, archive))
+        let metadata = server.filesystem.async_metadata(archive_path).await?;
+
+        Ok(Self::new(
+            server,
+            archive,
+            metadata
+                .created()
+                .map_or_else(|_| Default::default(), |dt| dt.into_std().into()),
+        ))
     }
 
     fn zip_entry_to_directory_entry(
+        archive_created: &chrono::DateTime<chrono::Utc>,
         path: &Path,
         entry_index: usize,
-        mime_cache: &moka::sync::Cache<usize, &'static str>,
+        mime_cache: &moka::sync::Cache<usize, MimeCacheValue>,
         sizes: &[(UsedSpace, PathBuf)],
         buffer: Option<&[u8]>,
         mut entry: zip::read::ZipFile<impl Read + Seek>,
@@ -139,25 +155,27 @@ impl VirtualZipArchive {
         };
 
         let mime_type = if entry.is_dir() {
-            "inode/directory"
+            (false, "inode/directory").into()
         } else if entry.is_symlink() {
-            "inode/symlink"
+            (false, "inode/symlink").into()
         } else if let Some(mime_type) = mime_cache.get(&entry_index) {
             mime_type
         } else if let Some(buffer) = buffer {
+            let valid_utf8 = crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty();
+
             let mime_type = if let Some(mime) = infer::get(buffer) {
-                mime.mime_type()
+                (valid_utf8, mime.mime_type())
             } else if let Some(mime) = new_mime_guess::from_path(entry.name()).iter_raw().next() {
-                mime
-            } else if crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty() {
-                "text/plain"
+                (valid_utf8, mime)
+            } else if valid_utf8 {
+                (true, "text/plain")
             } else {
-                "application/octet-stream"
+                (false, "application/octet-stream")
             };
 
-            mime_cache.insert(entry_index, mime_type);
+            mime_cache.insert(entry_index, mime_type.into());
 
-            mime_type
+            mime_type.into()
         } else {
             let mut buffer = [0; 64];
             let buffer = if entry.read(&mut buffer).is_err() {
@@ -167,23 +185,25 @@ impl VirtualZipArchive {
             };
 
             let mime_type = if let Some(buffer) = buffer {
+                let valid_utf8 = crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty();
+
                 if let Some(mime) = infer::get(buffer) {
-                    mime.mime_type()
+                    (valid_utf8, mime.mime_type())
                 } else if let Some(mime) = new_mime_guess::from_path(entry.name()).iter_raw().next()
                 {
-                    mime
-                } else if crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty() {
-                    "text/plain"
+                    (valid_utf8, mime)
+                } else if valid_utf8 {
+                    (true, "text/plain")
                 } else {
-                    "application/octet-stream"
+                    (false, "application/octet-stream")
                 }
             } else {
-                "application/octet-stream"
+                (false, "application/octet-stream")
             };
 
-            mime_cache.insert(entry_index, mime_type);
+            mime_cache.insert(entry_index, mime_type.into());
 
-            mime_type
+            mime_type.into()
         };
 
         let mode = entry
@@ -196,20 +216,21 @@ impl VirtualZipArchive {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into(),
-            created: crate::server::filesystem::archive::zip_entry_get_created_time(&entry)
-                .map(|dt| dt.into_std().into())
-                .unwrap_or_default(),
-            modified: crate::server::filesystem::archive::zip_entry_get_modified_time(&entry)
-                .map(|dt| dt.into_std().into())
-                .unwrap_or_default(),
             mode: encode_mode(mode),
             mode_bits: compact_str::format_compact!("{:o}", mode & 0o777),
             size,
             size_physical,
+            editable: entry.is_file() && mime_type.valid_utf8,
             directory: entry.is_dir(),
             file: entry.is_file(),
             symlink: entry.is_symlink(),
-            mime: mime_type,
+            mime: mime_type.mime,
+            modified: crate::server::filesystem::archive::zip_entry_get_modified_time(&entry)
+                .map(|dt| dt.into_std().into())
+                .unwrap_or_default(),
+            created: crate::server::filesystem::archive::zip_entry_get_created_time(&entry)
+                .map(|dt| dt.into_std().into())
+                .unwrap_or_else(|| *archive_created),
         }
     }
 
@@ -288,6 +309,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         path: &(dyn AsRef<Path> + Send + Sync),
     ) -> Result<DirectoryEntry, anyhow::Error> {
         let mut archive = self.archive.clone();
+        let archive_created = self.archive_created;
         let mime_cache = self.mime_cache.clone();
         let sizes = self.sizes.clone();
         let path = path.as_ref().to_path_buf();
@@ -297,6 +319,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
             let entry = archive.by_index(entry_index)?;
 
             Ok::<_, zip::result::ZipError>(Self::zip_entry_to_directory_entry(
+                &archive_created,
                 &path,
                 entry_index,
                 &mime_cache,
@@ -316,6 +339,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         buffer: &[u8],
     ) -> Result<DirectoryEntry, anyhow::Error> {
         let mut archive = self.archive.clone();
+        let archive_created = self.archive_created;
         let mime_cache = self.mime_cache.clone();
         let sizes = self.sizes.clone();
         let path = path.as_ref().to_path_buf();
@@ -326,6 +350,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
             let entry = archive.by_index(entry_index)?;
 
             Ok::<_, zip::result::ZipError>(Self::zip_entry_to_directory_entry(
+                &archive_created,
                 &path,
                 entry_index,
                 &mime_cache,
@@ -347,6 +372,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         is_ignored: IsIgnoredFn,
     ) -> Result<DirectoryListing, anyhow::Error> {
         let mut archive = self.archive.clone();
+        let archive_created = self.archive_created;
         let mime_cache = self.mime_cache.clone();
         let sizes = self.sizes.clone();
         let path = path.as_ref().to_path_buf();
@@ -406,6 +432,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
                         };
 
                         entries.push(Self::zip_entry_to_directory_entry(
+                            &archive_created,
                             &entry_path,
                             entry_index,
                             &mime_cache,
@@ -426,6 +453,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
                         };
 
                         entries.push(Self::zip_entry_to_directory_entry(
+                            &archive_created,
                             &entry_path,
                             entry_index,
                             &mime_cache,

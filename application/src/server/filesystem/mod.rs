@@ -1,5 +1,6 @@
 use crate::{
     io::counting_reader::AsyncCountingReader,
+    routes::MimeCacheValue,
     server::filesystem::virtualfs::{
         DirectoryStreamWalkFn, VirtualReadableFilesystem, VirtualWritableFilesystem,
     },
@@ -1318,22 +1319,24 @@ impl Filesystem {
             (real_metadata.size_logical(), real_metadata.size_physical())
         };
 
-        let mime = if real_metadata.is_dir() {
-            "inode/directory"
+        let (valid_utf8, mime) = if real_metadata.is_dir() {
+            (false, "inode/directory")
         } else if real_metadata.is_symlink() {
-            "inode/symlink"
+            (false, "inode/symlink")
         } else if let Some(buffer) = buffer {
+            let valid_utf8 = crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty();
+
             if let Some(mime) = infer::get(buffer) {
-                mime.mime_type()
-            } else if let Some(mime) = new_mime_guess::from_path(real_path).iter_raw().next() {
-                mime
-            } else if crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty() {
-                "text/plain"
+                (valid_utf8, mime.mime_type())
+            } else if let Some(mime) = new_mime_guess::from_path(real_path).first_raw() {
+                (valid_utf8, mime)
+            } else if valid_utf8 {
+                (true, "text/plain")
             } else {
-                "application/octet-stream"
+                (false, "application/octet-stream")
             }
         } else {
-            "application/octet-stream"
+            (false, "application/octet-stream")
         };
 
         crate::models::DirectoryEntry {
@@ -1342,19 +1345,15 @@ impl Filesystem {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into(),
-            created: chrono::DateTime::from_timestamp(
-                metadata
-                    .created()
-                    .map(|t| {
-                        t.into_std()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                    })
-                    .unwrap_or_default()
-                    .as_secs() as i64,
-                0,
-            )
-            .unwrap_or_default(),
+            mode: encode_mode(metadata.permissions().mode()),
+            mode_bits: compact_str::format_compact!("{:o}", metadata.permissions().mode() & 0o777),
+            size,
+            size_physical,
+            editable: real_metadata.is_file() && valid_utf8,
+            directory: real_metadata.is_dir(),
+            file: real_metadata.is_file(),
+            symlink: metadata.is_symlink(),
+            mime,
             modified: chrono::DateTime::from_timestamp(
                 metadata
                     .modified()
@@ -1368,14 +1367,19 @@ impl Filesystem {
                 0,
             )
             .unwrap_or_default(),
-            mode: encode_mode(metadata.permissions().mode()),
-            mode_bits: compact_str::format_compact!("{:o}", metadata.permissions().mode() & 0o777),
-            size,
-            size_physical,
-            directory: real_metadata.is_dir(),
-            file: real_metadata.is_file(),
-            symlink: metadata.is_symlink(),
-            mime,
+            created: chrono::DateTime::from_timestamp(
+                metadata
+                    .created()
+                    .map(|t| {
+                        t.into_std()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+                0,
+            )
+            .unwrap_or_default(),
         }
     }
 
@@ -1384,7 +1388,7 @@ impl Filesystem {
         path: PathBuf,
         metadata: &Metadata,
         no_directory_size: bool,
-        mime_type: Option<&'static str>,
+        mime_type: Option<MimeCacheValue>,
         symlink_destination: Option<PathBuf>,
         symlink_destination_metadata: Option<Metadata>,
     ) -> crate::models::DirectoryEntry {
@@ -1404,11 +1408,11 @@ impl Filesystem {
         };
 
         let mime_type = if real_metadata.is_dir() {
-            "inode/directory"
+            (false, "inode/directory").into()
         } else if real_metadata.is_symlink() {
-            "inode/symlink"
+            (false, "inode/symlink").into()
         } else {
-            mime_type.unwrap_or("application/octet-stream")
+            mime_type.unwrap_or_else(|| (false, "application/octet-stream").into())
         };
 
         crate::models::DirectoryEntry {
@@ -1417,19 +1421,15 @@ impl Filesystem {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into(),
-            created: chrono::DateTime::from_timestamp(
-                metadata
-                    .created()
-                    .map(|t| {
-                        t.into_std()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                    })
-                    .unwrap_or_default()
-                    .as_secs() as i64,
-                0,
-            )
-            .unwrap_or_default(),
+            mode: encode_mode(metadata.permissions().mode()),
+            mode_bits: compact_str::format_compact!("{:o}", metadata.permissions().mode() & 0o777),
+            size,
+            size_physical,
+            editable: real_metadata.is_file() && mime_type.valid_utf8,
+            directory: real_metadata.is_dir(),
+            file: real_metadata.is_file(),
+            symlink: metadata.is_symlink(),
+            mime: mime_type.mime,
             modified: chrono::DateTime::from_timestamp(
                 metadata
                     .modified()
@@ -1443,14 +1443,19 @@ impl Filesystem {
                 0,
             )
             .unwrap_or_default(),
-            mode: encode_mode(metadata.permissions().mode()),
-            mode_bits: compact_str::format_compact!("{:o}", metadata.permissions().mode() & 0o777),
-            size,
-            size_physical,
-            directory: real_metadata.is_dir(),
-            file: real_metadata.is_file(),
-            symlink: metadata.is_symlink(),
-            mime: mime_type,
+            created: chrono::DateTime::from_timestamp(
+                metadata
+                    .created()
+                    .map(|t| {
+                        t.into_std()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+                0,
+            )
+            .unwrap_or_default(),
         }
     }
 
@@ -1502,26 +1507,31 @@ impl Filesystem {
             };
 
             let mime_type = if let Some(buffer) = buffer {
+                let valid_utf8 = crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty();
+
                 if let Some(mime) = infer::get(buffer) {
-                    mime.mime_type()
+                    (valid_utf8, mime.mime_type())
                 } else if let Some(mime) =
                     new_mime_guess::from_path(symlink_destination.as_ref().unwrap_or(&path))
                         .iter_raw()
                         .next()
                 {
-                    mime
-                } else if crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty() {
-                    "text/plain"
+                    (valid_utf8, mime)
+                } else if valid_utf8 {
+                    (true, "text/plain")
                 } else {
-                    "application/octet-stream"
+                    (false, "application/octet-stream")
                 }
             } else {
-                "application/octet-stream"
+                (false, "application/octet-stream")
             };
 
-            self.app_state.mime_cache.insert(mime_key, mime_type).await;
+            self.app_state
+                .mime_cache
+                .insert(mime_key, mime_type.into())
+                .await;
 
-            mime_type
+            mime_type.into()
         };
 
         self.to_api_entry_mime_type(
@@ -1588,26 +1598,30 @@ impl Filesystem {
             };
 
             let mime_type = if let Some(buffer) = buffer {
+                let valid_utf8 = crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty();
                 if let Some(mime) = infer::get(buffer) {
-                    mime.mime_type()
+                    (valid_utf8, mime.mime_type())
                 } else if let Some(mime) =
                     new_mime_guess::from_path(symlink_destination.as_ref().unwrap_or(&path))
                         .iter_raw()
                         .next()
                 {
-                    mime
-                } else if crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty() {
-                    "text/plain"
+                    (valid_utf8, mime)
+                } else if valid_utf8 {
+                    (true, "text/plain")
                 } else {
-                    "application/octet-stream"
+                    (false, "application/octet-stream")
                 }
             } else {
-                "application/octet-stream"
+                (false, "application/octet-stream")
             };
 
-            self.app_state.mime_cache.insert(mime_key, mime_type).await;
+            self.app_state
+                .mime_cache
+                .insert(mime_key, mime_type.into())
+                .await;
 
-            mime_type
+            mime_type.into()
         };
 
         self.to_api_entry_mime_type(

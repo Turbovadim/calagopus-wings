@@ -23,6 +23,21 @@ pub struct MimeCacheKey {
     pub modified: u64,
 }
 
+#[derive(Clone, Copy)]
+pub struct MimeCacheValue {
+    pub mime: &'static str,
+    pub valid_utf8: bool,
+}
+
+impl From<(bool, &'static str)> for MimeCacheValue {
+    fn from(value: (bool, &'static str)) -> Self {
+        Self {
+            valid_utf8: value.0,
+            mime: value.1,
+        }
+    }
+}
+
 #[cfg(unix)]
 impl From<&std::fs::Metadata> for MimeCacheKey {
     fn from(metadata: &std::fs::Metadata) -> Self {
@@ -85,7 +100,7 @@ pub struct AppState {
     pub server_manager: Arc<crate::server::manager::ServerManager>,
     pub backup_manager: Arc<crate::server::backup::manager::BackupManager>,
     pub inotify_manager: Arc<crate::server::filesystem::inotify::InotifyManager>,
-    pub mime_cache: moka::future::Cache<MimeCacheKey, &'static str>,
+    pub mime_cache: moka::future::Cache<MimeCacheKey, MimeCacheValue>,
 }
 
 #[derive(ToSchema, Serialize, Deserialize)]

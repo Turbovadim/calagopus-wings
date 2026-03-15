@@ -909,24 +909,28 @@ impl VirtualResticBackup {
             _ => 0,
         };
 
-        let mime_type = if matches!(entry.r#type, ResticEntryType::Dir) {
-            "inode/directory"
+        let (valid_utf8, mime_type) = if matches!(entry.r#type, ResticEntryType::Dir) {
+            (false, "inode/directory")
         } else if matches!(entry.r#type, ResticEntryType::Symlink) {
-            "inode/symlink"
+            (false, "inode/symlink")
         } else if let Some(buffer) = buffer {
+            let valid_utf8 = crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty();
+
             if let Some(mime) = infer::get(buffer) {
-                mime.mime_type()
+                (valid_utf8, mime.mime_type())
             } else if let Some(mime) = new_mime_guess::from_path(&entry.path).iter_raw().next() {
-                mime
-            } else if crate::utils::is_valid_utf8_slice(buffer) || buffer.is_empty() {
-                "text/plain"
+                (valid_utf8, mime)
+            } else if valid_utf8 {
+                (true, "text/plain")
             } else {
-                "application/octet-stream"
+                (false, "application/octet-stream")
             }
         } else {
-            new_mime_guess::from_path(&entry.path)
+            let mime = new_mime_guess::from_path(&entry.path)
                 .first_raw()
-                .unwrap_or("application/octet-stream")
+                .unwrap_or("application/octet-stream");
+
+            (mime != "application/octet-stream", mime)
         };
 
         DirectoryEntry {
@@ -935,16 +939,17 @@ impl VirtualResticBackup {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into(),
-            created: chrono::DateTime::from_timestamp(0, 0).unwrap_or_default(),
-            modified: entry.mtime,
             mode: encode_mode(entry.mode),
             mode_bits: compact_str::format_compact!("{:o}", entry.mode & 0o777),
             size,
             size_physical: size,
+            editable: matches!(entry.r#type, ResticEntryType::File) && valid_utf8,
             directory: matches!(entry.r#type, ResticEntryType::Dir),
             file: matches!(entry.r#type, ResticEntryType::File),
             symlink: matches!(entry.r#type, ResticEntryType::Symlink),
             mime: mime_type,
+            modified: entry.mtime,
+            created: chrono::DateTime::from_timestamp(0, 0).unwrap_or_default(),
         }
     }
 

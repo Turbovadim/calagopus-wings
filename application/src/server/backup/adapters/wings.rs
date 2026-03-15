@@ -790,7 +790,15 @@ impl BackupExt for WingsBackup {
                 })
                 .await??;
 
-                Ok(Arc::new(VirtualZipArchive::new(server.clone(), archive)))
+                let metadata = tokio::fs::metadata(&self.path).await?;
+
+                Ok(Arc::new(VirtualZipArchive::new(
+                    server.clone(),
+                    archive,
+                    metadata
+                        .created()
+                        .map_or_else(|_| Default::default(), |dt| dt.into()),
+                )))
             }
             ArchiveFormat::SevenZip => {
                 let reader = Arc::new(tokio::fs::File::open(&self.path).await?.into_std().await);
@@ -805,9 +813,14 @@ impl BackupExt for WingsBackup {
                 })
                 .await??;
 
+                let metadata = tokio::fs::metadata(&self.path).await?;
+
                 Ok(Arc::new(VirtualSevenZipArchive::new(
                     server.clone(),
                     Arc::new(archive),
+                    metadata
+                        .created()
+                        .map_or_else(|_| Default::default(), |dt| dt.into()),
                     reader,
                 )))
             }
