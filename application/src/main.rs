@@ -364,7 +364,7 @@ async fn main() {
         .expect("Failed to install rustls crypto provider");
 
     if config.system.sftp.enabled {
-        tracing::info!("starting http/sftp server");
+        tracing::info!("starting ssh server");
 
         tokio::spawn({
             let state = Arc::clone(&state);
