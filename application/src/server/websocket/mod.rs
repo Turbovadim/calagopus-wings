@@ -257,7 +257,7 @@ impl ServerWebsocketHandler {
         if let Some(socket_jwt) = &*self.socket_jwt.read().await {
             Ok(Arc::clone(socket_jwt))
         } else {
-            Err(anyhow::anyhow!("unable to aquire socket jwt"))
+            Err(anyhow::anyhow!("unable to acquire socket jwt"))
         }
     }
 

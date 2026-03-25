@@ -327,7 +327,7 @@ impl russh::server::Handler for SshSession {
             None => return Err(russh::Error::WrongChannel),
         };
 
-        tracing::debug!("recieved command from exec: {}", command);
+        tracing::debug!("received command from exec: {}", command);
 
         session.channel_success(channel_id)?;
         let exec = super::exec::ExecSession {

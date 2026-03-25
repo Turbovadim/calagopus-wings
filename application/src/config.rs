@@ -892,7 +892,7 @@ impl DockerOverhead {
     /// means, <=1024MiB ram = 1.05 multiplier,
     /// <=2048MiB ram = 1.10 multiplier,
     /// >2048MiB ram = 1.05 multiplier (default_multiplier)
-    pub fn get_mutiplier(&self, memory: MiB) -> f64 {
+    pub fn get_multiplier(&self, memory: MiB) -> f64 {
         if !self.r#override {
             if memory.as_mib() <= 2048 {
                 return 1.15;
@@ -916,7 +916,7 @@ impl DockerOverhead {
 
     #[inline]
     pub fn get_memory(&self, memory: MiB) -> MiB {
-        let multiplier = self.get_mutiplier(memory);
+        let multiplier = self.get_multiplier(memory);
 
         MiB((memory.as_mib() as f64 * multiplier) as u64)
     }
@@ -1211,9 +1211,9 @@ impl Config {
                 false,
                 sysinfo::ProcessRefreshKind::nothing().with_memory(),
             );
-            if let Some(process) = sys.process(current_pid) {
-                let users = sysinfo::Users::new_with_refreshed_list();
+            let users = sysinfo::Users::new_with_refreshed_list();
 
+            if let Some(process) = sys.process(current_pid) {
                 if self.system.user.rootless.enabled {
                     if let Some(user) = process.user_id() {
                         if let Some(user) = users.get_user_by_id(user) {
@@ -1228,20 +1228,20 @@ impl Config {
 
                     return Ok(());
                 }
+            }
 
-                let mut found_user = false;
-                for user in users.list() {
-                    if user.name() == self.system.username {
-                        self.system.user.uid = **user.id();
-                        self.system.user.gid = *user.group_id();
-                        found_user = true;
-                        break;
-                    }
+            let mut found_user = false;
+            for user in users.list() {
+                if user.name() == self.system.username {
+                    self.system.user.uid = **user.id();
+                    self.system.user.gid = *user.group_id();
+                    found_user = true;
+                    break;
                 }
+            }
 
-                if found_user {
-                    return Ok(());
-                }
+            if found_user {
+                return Ok(());
             }
         }
 
