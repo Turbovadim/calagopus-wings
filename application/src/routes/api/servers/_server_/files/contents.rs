@@ -14,7 +14,7 @@ mod get {
         http::{HeaderMap, StatusCode},
     };
     use serde::Deserialize;
-    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
     use utoipa::ToSchema;
 
     #[derive(ToSchema, Deserialize)]
@@ -138,6 +138,15 @@ mod get {
             );
             headers.insert("Content-Type", "application/octet-stream".parse()?);
         }
+
+        let reader: Box<dyn tokio::io::AsyncRead + Unpin + Send> = if matches!(
+            compression_type,
+            crate::io::compression::CompressionType::None
+        ) {
+            Box::new(reader)
+        } else {
+            Box::new(reader.take(metadata.size))
+        };
 
         ApiResponse::new_stream(reader).with_headers(headers).ok()
     }
