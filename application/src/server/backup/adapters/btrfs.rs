@@ -1,5 +1,4 @@
 use crate::{
-    io::counting_reader::AsyncCountingReader,
     remote::backups::RawServerBackup,
     response::ApiResponse,
     server::{
@@ -394,22 +393,7 @@ impl BackupExt for BtrfsBackup {
                                         server.filesystem.async_create_dir_all(parent).await?;
                                     }
 
-                                    let file = filesystem.async_open(&path).await?;
-                                    let mut writer =
-                                        crate::server::filesystem::writer::AsyncFileSystemWriter::new(
-                                            server.clone(),
-                                            &path,
-                                            Some(metadata.permissions()),
-                                            metadata.modified().ok(),
-                                        )
-                                        .await?;
-                                    let mut reader = AsyncCountingReader::new_with_bytes_read(
-                                        file,
-                                        Arc::clone(&progress),
-                                    );
-
-                                    tokio::io::copy(&mut reader, &mut writer).await?;
-                                    writer.shutdown().await?;
+                                    filesystem.async_quota_copy(&path, &path, &server, Some(&progress)).await?;
                                 } else if metadata.is_dir() {
                                     server.filesystem.async_create_dir_all(&path).await?;
                                     server
