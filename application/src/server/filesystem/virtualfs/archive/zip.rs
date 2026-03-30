@@ -57,6 +57,55 @@ impl<R: Read + Seek + Clone> BetterZipArchiveExt<R> for zip::ZipArchive<R> {
     }
 }
 
+pub struct SortableZipEntry {
+    pub name: PathBuf,
+    pub size: u64,
+    pub size_compressed: u64,
+    pub modified: chrono::DateTime<chrono::Utc>,
+    pub created: chrono::DateTime<chrono::Utc>,
+}
+
+impl SortableZipEntry {
+    pub fn new(
+        name: PathBuf,
+        entry: &zip::read::ZipFile<'_, impl Read + Seek>,
+        archive_created: &chrono::DateTime<chrono::Utc>,
+    ) -> Self {
+        Self {
+            name,
+            size: entry.size(),
+            size_compressed: entry.compressed_size(),
+            modified: crate::server::filesystem::archive::zip_entry_get_modified_time(entry)
+                .map(|dt| dt.into_std().into())
+                .unwrap_or_default(),
+            created: crate::server::filesystem::archive::zip_entry_get_created_time(entry)
+                .map(|dt| dt.into_std().into())
+                .unwrap_or_else(|| *archive_created),
+        }
+    }
+
+    pub fn cmp_sort(
+        &self,
+        other: &Self,
+        sort: crate::models::DirectorySortingMode,
+    ) -> std::cmp::Ordering {
+        use crate::models::DirectorySortingMode::*;
+
+        match sort {
+            NameAsc => self.name.cmp(&other.name),
+            NameDesc => other.name.cmp(&self.name),
+            SizeAsc => self.size.cmp(&other.size),
+            SizeDesc => other.size.cmp(&self.size),
+            PhysicalSizeAsc => self.size_compressed.cmp(&other.size_compressed),
+            PhysicalSizeDesc => other.size_compressed.cmp(&self.size_compressed),
+            ModifiedAsc => self.modified.cmp(&other.modified),
+            ModifiedDesc => other.modified.cmp(&self.modified),
+            CreatedAsc => self.created.cmp(&other.created),
+            CreatedDesc => other.created.cmp(&self.created),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct VirtualZipArchive {
     pub server: crate::server::Server,
@@ -344,6 +393,7 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         per_page: Option<usize>,
         page: usize,
         is_ignored: IsIgnoredFn,
+        sort: crate::models::DirectorySortingMode,
     ) -> Result<DirectoryListing, anyhow::Error> {
         let mut archive = self.archive.clone();
         let archive_created = self.archive_created;
@@ -373,19 +423,22 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
                         continue;
                     }
 
-                    if (is_ignored)(Self::zip_entry_to_file_type(&entry), name).is_none() {
+                    let Some(name) = (is_ignored)(Self::zip_entry_to_file_type(&entry), name)
+                    else {
                         continue;
-                    }
+                    };
 
                     if entry.is_dir() {
-                        directory_entries.push((i, entry.name().to_string()));
+                        directory_entries
+                            .push((i, SortableZipEntry::new(name, &entry, &archive_created)));
                     } else {
-                        other_entries.push((i, entry.name().to_string()));
+                        other_entries
+                            .push((i, SortableZipEntry::new(name, &entry, &archive_created)));
                     }
                 }
 
-                directory_entries.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-                other_entries.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+                directory_entries.sort_unstable_by(|a, b| a.1.cmp_sort(&b.1, sort));
+                other_entries.sort_unstable_by(|a, b| a.1.cmp_sort(&b.1, sort));
 
                 let total_entries = directory_entries.len() + other_entries.len();
                 let mut entries = Vec::new();

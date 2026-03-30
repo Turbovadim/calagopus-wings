@@ -5,7 +5,6 @@ use utoipa::ToSchema;
 
 #[derive(ToSchema, Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[schema(rename_all = "snake_case")]
 pub enum ServerPowerAction {
     Start,
     Stop,
@@ -32,7 +31,6 @@ impl FromStr for ServerPowerAction {
 
 #[derive(ToSchema, Default, Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[schema(rename_all = "snake_case")]
 pub enum ServerAutoStartBehavior {
     Always,
     #[default]
@@ -42,7 +40,6 @@ pub enum ServerAutoStartBehavior {
 
 #[derive(ToSchema, Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[schema(rename_all = "snake_case")]
 pub enum ServerBackupStatus {
     Starting,
     Finished,
@@ -55,6 +52,22 @@ pub struct Server {
     pub is_suspended: bool,
     pub utilization: crate::server::resources::ResourceUsage,
     pub configuration: crate::server::configuration::ServerConfiguration,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectorySortingMode {
+    #[default]
+    NameAsc,
+    NameDesc,
+    SizeAsc,
+    SizeDesc,
+    PhysicalSizeAsc,
+    PhysicalSizeDesc,
+    ModifiedAsc,
+    ModifiedDesc,
+    CreatedAsc,
+    CreatedDesc,
 }
 
 #[derive(ToSchema, Serialize)]

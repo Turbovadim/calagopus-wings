@@ -53,6 +53,52 @@ impl EntryReaderExt for Option<Arc<ddup_bak::repository::Repository>> {
     }
 }
 
+pub trait CmpSortExt {
+    fn cmp_sort(
+        &self,
+        other: &Self,
+        sort: crate::models::DirectorySortingMode,
+    ) -> std::cmp::Ordering;
+}
+
+impl CmpSortExt for Entry {
+    fn cmp_sort(
+        &self,
+        other: &Self,
+        sort: crate::models::DirectorySortingMode,
+    ) -> std::cmp::Ordering {
+        use crate::models::DirectorySortingMode::*;
+
+        let size = match self {
+            Entry::File(file) => file.size,
+            _ => 0,
+        };
+        let size_other = match other {
+            Entry::File(file) => file.size,
+            _ => 0,
+        };
+        let size_physical = match self {
+            Entry::File(file) => file.size_compressed.unwrap_or(file.size),
+            _ => 0,
+        };
+        let size_physical_other = match other {
+            Entry::File(file) => file.size_compressed.unwrap_or(file.size),
+            _ => 0,
+        };
+
+        match sort {
+            NameAsc => self.name().cmp(other.name()),
+            NameDesc => other.name().cmp(self.name()),
+            SizeAsc => size.cmp(&size_other),
+            SizeDesc => size_other.cmp(&size),
+            PhysicalSizeAsc => size_physical.cmp(&size_physical_other),
+            PhysicalSizeDesc => size_physical_other.cmp(&size_physical),
+            ModifiedAsc | CreatedAsc => self.mtime().cmp(&other.mtime()),
+            ModifiedDesc | CreatedDesc => other.mtime().cmp(&self.mtime()),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct VirtualDdupBakArchive {
     pub server: crate::server::Server,
@@ -423,6 +469,7 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
         per_page: Option<usize>,
         page: usize,
         is_ignored: IsIgnoredFn,
+        sort: crate::models::DirectorySortingMode,
     ) -> Result<DirectoryListing, anyhow::Error> {
         let archive = self.archive.clone();
         let archive_created = self.archive_created;
@@ -462,8 +509,8 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                             }
                         }
 
-                        directory_entries.sort_unstable_by(|a, b| a.name().cmp(b.name()));
-                        other_entries.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+                        directory_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
+                        other_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
 
                         let total_entries = directory_entries.len() + other_entries.len();
                         let mut entries = Vec::new();
@@ -532,8 +579,8 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                             }
                         }
 
-                        directory_entries.sort_unstable_by(|a, b| a.name().cmp(b.name()));
-                        other_entries.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+                        directory_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
+                        other_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
 
                         let total_entries = directory_entries.len() + other_entries.len();
                         let mut entries = Vec::new();

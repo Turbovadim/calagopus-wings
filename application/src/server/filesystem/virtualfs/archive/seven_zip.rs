@@ -30,6 +30,37 @@ use std::{
 };
 use tokio::io::AsyncWriteExt;
 
+pub trait CmpSortExt {
+    fn cmp_sort(
+        &self,
+        other: &Self,
+        sort: crate::models::DirectorySortingMode,
+    ) -> std::cmp::Ordering;
+}
+
+impl CmpSortExt for sevenz_rust2::ArchiveEntry {
+    fn cmp_sort(
+        &self,
+        other: &Self,
+        sort: crate::models::DirectorySortingMode,
+    ) -> std::cmp::Ordering {
+        use crate::models::DirectorySortingMode::*;
+
+        match sort {
+            NameAsc => self.name().cmp(other.name()),
+            NameDesc => other.name().cmp(self.name()),
+            SizeAsc => self.size.cmp(&other.size),
+            SizeDesc => other.size.cmp(&self.size),
+            PhysicalSizeAsc => self.compressed_size.cmp(&other.compressed_size),
+            PhysicalSizeDesc => other.compressed_size.cmp(&self.compressed_size),
+            ModifiedAsc => self.last_modified_date().cmp(&other.last_modified_date()),
+            ModifiedDesc => other.last_modified_date().cmp(&self.last_modified_date()),
+            CreatedAsc => self.creation_date().cmp(&other.creation_date()),
+            CreatedDesc => other.creation_date().cmp(&self.creation_date()),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct VirtualSevenZipArchive {
     pub server: crate::server::Server,
@@ -373,6 +404,7 @@ impl VirtualReadableFilesystem for VirtualSevenZipArchive {
         per_page: Option<usize>,
         page: usize,
         is_ignored: IsIgnoredFn,
+        sort: crate::models::DirectorySortingMode,
     ) -> Result<DirectoryListing, anyhow::Error> {
         let archive = self.archive.clone();
         let archive_created = self.archive_created;
@@ -409,14 +441,14 @@ impl VirtualReadableFilesystem for VirtualSevenZipArchive {
                     }
 
                     if entry.is_directory() {
-                        directory_entries.push((i, entry.name()));
+                        directory_entries.push((i, entry));
                     } else {
-                        other_entries.push((i, entry.name()));
+                        other_entries.push((i, entry));
                     }
                 }
 
-                directory_entries.sort_unstable_by(|a, b| a.1.cmp(b.1));
-                other_entries.sort_unstable_by(|a, b| a.1.cmp(b.1));
+                directory_entries.sort_unstable_by(|a, b| a.1.cmp_sort(b.1, sort));
+                other_entries.sort_unstable_by(|a, b| a.1.cmp_sort(b.1, sort));
 
                 let total_entries = directory_entries.len() + other_entries.len();
                 let mut entries = Vec::new();
@@ -425,15 +457,14 @@ impl VirtualReadableFilesystem for VirtualSevenZipArchive {
                     .into_iter()
                     .chain(other_entries.into_iter());
 
-                let target_entries: Vec<(usize, &str)> = if let Some(per_page) = per_page {
+                let target_entries: Vec<_> = if let Some(per_page) = per_page {
                     let start = (page - 1) * per_page;
                     iterator.skip(start).take(per_page).collect()
                 } else {
                     iterator.collect()
                 };
 
-                for (entry_index, _) in target_entries {
-                    let archive_entry = &archive.files[entry_index];
+                for (entry_index, archive_entry) in target_entries {
                     let entry_path = Path::new(archive_entry.name());
 
                     let needs_read =

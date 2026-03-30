@@ -161,7 +161,10 @@ impl super::VirtualReadableFilesystem for VirtualCapFilesystem {
         per_page: Option<usize>,
         page: usize,
         is_ignored: IsIgnoredFn,
+        sort: crate::models::DirectorySortingMode,
     ) -> Result<DirectoryListing, anyhow::Error> {
+        use crate::models::DirectorySortingMode::*;
+
         let path = path.as_ref();
         let is_ignored = if let Some(existing_is_ignored) = &self.is_ignored {
             existing_is_ignored.clone().merge(is_ignored)
@@ -171,14 +174,11 @@ impl super::VirtualReadableFilesystem for VirtualCapFilesystem {
         let mut directory_reader = self.inner.async_read_dir(path).await?;
         let mut directory_entries = Vec::new();
         let mut other_entries = Vec::new();
-
         while let Some(Ok((file_type, entry))) = directory_reader.next_entry().await {
             let path = path.join(&entry);
-
             if is_ignored(file_type, path).is_none() {
                 continue;
             }
-
             if file_type.is_dir() {
                 directory_entries.push(entry);
             } else {
@@ -186,30 +186,56 @@ impl super::VirtualReadableFilesystem for VirtualCapFilesystem {
             }
         }
 
-        directory_entries.sort_unstable();
-        other_entries.sort_unstable();
+        let name_sort = matches!(sort, NameAsc | NameDesc);
 
-        let total_entries = directory_entries.len() + other_entries.len();
-        let mut entries = Vec::new();
+        if name_sort {
+            directory_entries.sort_unstable();
+            other_entries.sort_unstable();
 
-        if let Some(per_page) = per_page {
-            let start = (page - 1) * per_page;
+            let total_entries = directory_entries.len() + other_entries.len();
+            let mut entries = Vec::new();
 
-            for entry in directory_entries
-                .into_iter()
-                .chain(other_entries.into_iter())
-                .skip(start)
-                .take(per_page)
-            {
-                let path = path.join(&entry);
-                let entry = match self.async_directory_entry(&path).await {
-                    Ok(entry) => entry,
-                    Err(_) => continue,
-                };
-
-                entries.push(entry);
+            if matches!(sort, NameDesc) {
+                directory_entries.reverse();
+                other_entries.reverse();
             }
+
+            if let Some(per_page) = per_page {
+                for entry in directory_entries
+                    .into_iter()
+                    .chain(other_entries.into_iter())
+                    .skip((page - 1) * per_page)
+                    .take(per_page)
+                {
+                    let path = path.join(&entry);
+                    let entry = match self.async_directory_entry(&path).await {
+                        Ok(entry) => entry,
+                        Err(_) => continue,
+                    };
+                    entries.push(entry);
+                }
+            } else {
+                for entry in directory_entries
+                    .into_iter()
+                    .chain(other_entries.into_iter())
+                {
+                    let path = path.join(&entry);
+                    let entry = match self.async_directory_entry(&path).await {
+                        Ok(entry) => entry,
+                        Err(_) => continue,
+                    };
+                    entries.push(entry);
+                }
+            }
+
+            Ok(DirectoryListing {
+                total_entries,
+                entries,
+            })
         } else {
+            let total_entries = directory_entries.len() + other_entries.len();
+            let mut entries = Vec::new();
+
             for entry in directory_entries
                 .into_iter()
                 .chain(other_entries.into_iter())
@@ -219,15 +245,35 @@ impl super::VirtualReadableFilesystem for VirtualCapFilesystem {
                     Ok(entry) => entry,
                     Err(_) => continue,
                 };
-
                 entries.push(entry);
             }
-        }
 
-        Ok(DirectoryListing {
-            total_entries,
-            entries,
-        })
+            entries.sort_by(|a, b| match (a.directory, b.directory) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => match sort {
+                    SizeAsc => a.size.cmp(&b.size),
+                    SizeDesc => b.size.cmp(&a.size),
+                    PhysicalSizeAsc => a.size_physical.cmp(&b.size_physical),
+                    PhysicalSizeDesc => b.size_physical.cmp(&a.size_physical),
+                    ModifiedAsc => a.modified.cmp(&b.modified),
+                    ModifiedDesc => b.modified.cmp(&a.modified),
+                    CreatedAsc => a.created.cmp(&b.created),
+                    CreatedDesc => b.created.cmp(&a.created),
+                    NameAsc | NameDesc => unreachable!(),
+                },
+            });
+
+            if let Some(per_page) = per_page {
+                let start = (page - 1) * per_page;
+                entries = entries.into_iter().skip(start).take(per_page).collect();
+            }
+
+            Ok(DirectoryListing {
+                total_entries,
+                entries,
+            })
+        }
     }
 
     async fn async_walk_dir<'a>(

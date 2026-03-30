@@ -74,6 +74,25 @@ pub struct ResticDirectoryEntry {
     mtime: chrono::DateTime<chrono::Utc>,
 }
 
+impl ResticDirectoryEntry {
+    pub fn cmp_sort(
+        &self,
+        other: &Self,
+        sort: crate::models::DirectorySortingMode,
+    ) -> std::cmp::Ordering {
+        use crate::models::DirectorySortingMode::*;
+
+        match sort {
+            NameAsc => self.path.cmp(&other.path),
+            NameDesc => other.path.cmp(&self.path),
+            SizeAsc | PhysicalSizeAsc => self.size.unwrap_or(0).cmp(&other.size.unwrap_or(0)),
+            SizeDesc | PhysicalSizeDesc => other.size.unwrap_or(0).cmp(&self.size.unwrap_or(0)),
+            ModifiedAsc | CreatedAsc => self.mtime.cmp(&other.mtime),
+            ModifiedDesc | CreatedDesc => other.mtime.cmp(&self.mtime),
+        }
+    }
+}
+
 pub struct ResticBackup {
     uuid: uuid::Uuid,
     short_id: String,
@@ -1039,6 +1058,7 @@ impl VirtualReadableFilesystem for VirtualResticBackup {
         per_page: Option<usize>,
         page: usize,
         is_ignored: IsIgnoredFn,
+        sort: crate::models::DirectorySortingMode,
     ) -> Result<DirectoryListing, anyhow::Error> {
         let path = path.as_ref().to_path_buf();
         let mut directory_entries = Vec::new();
@@ -1068,8 +1088,8 @@ impl VirtualReadableFilesystem for VirtualResticBackup {
             }
         }
 
-        directory_entries.sort_unstable_by(|a, b| a.path.cmp(&b.path));
-        other_entries.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+        directory_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
+        other_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
 
         let total_entries = directory_entries.len() + other_entries.len();
         let mut entries = Vec::new();

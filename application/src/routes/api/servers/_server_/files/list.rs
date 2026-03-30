@@ -22,6 +22,9 @@ mod get {
 
         pub per_page: Option<usize>,
         pub page: Option<usize>,
+
+        #[serde(default)]
+        pub sort: crate::models::DirectorySortingMode,
     }
 
     #[derive(ToSchema, Serialize)]
@@ -57,6 +60,10 @@ mod get {
         (
             "page" = usize, Query,
             description = "The page number to return",
+        ),
+        (
+            "sort" = crate::models::DirectorySortingMode, Query,
+            description = "The sorting mode to use",
         ),
     ))]
     pub async fn route(
@@ -117,7 +124,7 @@ mod get {
         };
 
         let entries = filesystem
-            .async_read_dir(&root, per_page, page, is_ignored)
+            .async_read_dir(&root, per_page, page, is_ignored, data.sort)
             .await?;
 
         ApiResponse::new_serialized(Response {

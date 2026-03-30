@@ -421,6 +421,7 @@ pub trait VirtualReadableFilesystem: Send + Sync {
         per_page: Option<usize>,
         page: usize,
         is_ignored: IsIgnoredFn,
+        sort: crate::models::DirectorySortingMode,
     ) -> Result<DirectoryListing, anyhow::Error>;
     async fn async_walk_dir<'a>(
         &'a self,
