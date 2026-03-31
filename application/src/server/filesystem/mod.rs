@@ -1090,6 +1090,10 @@ impl Filesystem {
     }
 
     pub async fn chown_path(&self, path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
+        if self.config.system.user.rootless.enabled {
+            return Ok(());
+        }
+
         #[cfg(unix)]
         {
             let metadata = self.async_metadata(path.as_ref()).await?;

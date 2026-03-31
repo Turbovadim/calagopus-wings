@@ -1191,7 +1191,7 @@ impl Config {
         let release =
             std::fs::read_to_string("/etc/os-release").unwrap_or_else(|_| "unknown".to_string());
 
-        if release.contains("distroless") {
+        if release.contains("distroless") || std::env::var("OCI_CONTAINER").is_ok() {
             self.system.username =
                 std::env::var("WINGS_USERNAME").map_or_else(|_| system_username(), |u| u.into());
             self.system.user.uid = std::env::var("WINGS_UID")
@@ -1222,9 +1222,15 @@ impl Config {
                     }
 
                     self.system.user.uid = **user;
+                    if self.system.user.rootless.container_uid == 0 {
+                        self.system.user.rootless.container_uid = self.system.user.uid;
+                    }
                 }
                 if let Some(group) = process.group_id() {
                     self.system.user.gid = *group;
+                    if self.system.user.rootless.container_gid == 0 {
+                        self.system.user.rootless.container_gid = self.system.user.gid;
+                    }
                 }
 
                 return Ok(());

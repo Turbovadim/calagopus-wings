@@ -649,13 +649,29 @@ impl super::VirtualWritableFilesystem for VirtualCapFilesystem {
         self.inner.async_rename(from, &self.inner, to).await
     }
 
-    fn chown(&self, _path: &(dyn AsRef<Path> + Send + Sync)) -> Result<(), anyhow::Error> {
+    fn chown(&self, path: &(dyn AsRef<Path> + Send + Sync)) -> Result<(), anyhow::Error> {
+        if self.server.app_state.config.system.user.rootless.enabled {
+            return Ok(());
+        }
+
+        if self.is_primary_server_fs {
+            tokio::runtime::Handle::current().block_on(self.server.filesystem.chown_path(path))?;
+        }
+
         Ok(())
     }
     async fn async_chown(
         &self,
-        _path: &(dyn AsRef<Path> + Send + Sync),
+        path: &(dyn AsRef<Path> + Send + Sync),
     ) -> Result<(), anyhow::Error> {
+        if self.server.app_state.config.system.user.rootless.enabled {
+            return Ok(());
+        }
+
+        if self.is_primary_server_fs {
+            self.server.filesystem.chown_path(path).await?;
+        }
+
         Ok(())
     }
 }
