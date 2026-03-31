@@ -1204,18 +1204,19 @@ impl Config {
             return Ok(());
         }
 
-        if let Ok(current_pid) = sysinfo::get_current_pid() {
+        let users = sysinfo::Users::new_with_refreshed_list();
+
+        if self.system.user.rootless.enabled
+            && let Ok(current_pid) = sysinfo::get_current_pid()
+        {
             let mut sys = sysinfo::System::new_all();
             sys.refresh_processes_specifics(
                 sysinfo::ProcessesToUpdate::Some(&[current_pid]),
                 false,
                 sysinfo::ProcessRefreshKind::nothing().with_memory(),
             );
-            let users = sysinfo::Users::new_with_refreshed_list();
 
-            if let Some(process) = sys.process(current_pid)
-                && self.system.user.rootless.enabled
-            {
+            if let Some(process) = sys.process(current_pid) {
                 if let Some(user) = process.user_id() {
                     if let Some(user) = users.get_user_by_id(user) {
                         self.system.username = user.name().to_compact_string();
@@ -1233,54 +1234,66 @@ impl Config {
                     }
                 }
 
-                return Ok(());
-            }
-
-            let mut found_user = false;
-            for user in users.list() {
-                if user.name() == self.system.username {
-                    self.system.user.uid = **user.id();
-                    self.system.user.gid = *user.group_id();
-
-                    if self.system.user.uid == 0 || self.system.user.gid == 0 {
-                        return Err(anyhow::anyhow!(
-                            "refusing to use user with UID or GID of 0 (root), please check your wings config and change system.username to a non-root user"
-                        ));
-                    }
-
-                    found_user = true;
-                    break;
+                if self.system.user.uid == 0 || self.system.user.gid == 0 {
+                    return Err(anyhow::anyhow!(
+                        "refusing to use user with UID or GID of 0 (root), please check your wings config and change system.username to a non-root user or disable rootless mode"
+                    ));
                 }
-            }
 
-            if found_user {
                 return Ok(());
             }
         }
 
-        let command = if release.contains("alpine") {
+        let mut found_user = false;
+        for user in users.list() {
+            if user.name() == self.system.username {
+                self.system.user.uid = **user.id();
+                self.system.user.gid = *user.group_id();
+
+                if self.system.user.uid == 0 || self.system.user.gid == 0 {
+                    return Err(anyhow::anyhow!(
+                        "refusing to use user with UID or GID of 0 (root), please check your wings config and change system.username to a non-root user"
+                    ));
+                }
+
+                found_user = true;
+                break;
+            }
+        }
+
+        if found_user {
+            return Ok(());
+        }
+
+        let output = if release.contains("alpine") {
             std::process::Command::new("addgroup")
                 .arg("-S")
                 .arg(&self.system.username)
                 .output()
                 .context("failed to create group")?;
 
-            format!(
-                "adduser -S -D -H -G {} -s /sbin/nologin {}",
-                self.system.username, self.system.username
-            )
+            std::process::Command::new("adduser")
+                .arg("-S")
+                .arg("-D")
+                .arg("-H")
+                .arg("-G")
+                .arg(&self.system.username)
+                .arg("-s")
+                .arg("/sbin/nologin")
+                .arg(&self.system.username)
+                .output()
+                .context(format!("failed to create user {}", self.system.username))?
         } else {
-            format!(
-                "useradd --system --no-create-home --shell /usr/sbin/nologin {}",
-                self.system.username
-            )
+            std::process::Command::new("useradd")
+                .arg("--system")
+                .arg("--no-create-home")
+                .arg("--shell")
+                .arg("/usr/sbin/nologin")
+                .arg(&self.system.username)
+                .output()
+                .context(format!("failed to create user {}", self.system.username))?
         };
 
-        let split = command.split_whitespace().collect::<Vec<_>>();
-        let output = std::process::Command::new(split[0])
-            .args(&split[1..])
-            .output()
-            .context(format!("failed to create user {}", self.system.username))?;
         if !output.status.success() {
             return Err(
                 anyhow::anyhow!("failed to create user {}", self.system.username).context(format!(
