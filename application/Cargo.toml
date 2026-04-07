@@ -1,7 +1,7 @@
 [package]
 name = "wings-rs"
 rust-version = { workspace = true }
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 
 [dependencies]
@@ -85,7 +85,6 @@ mime = "0.3.17"
 toml = { version = "1.0.1", features = ["preserve_order"] }
 sntpc-net-tokio = "1.0.1"
 sntpc = { version = "0.8.1", features = ["std"] }
-libz-ng-sys = "=1.1.23" # temporary pin due to riscv64 issues
 notify = "8.2.0"
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
