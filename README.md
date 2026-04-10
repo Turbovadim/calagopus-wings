@@ -55,6 +55,10 @@ system:
   # path for temporary mountpoints for servers
   vmount_directory: /var/lib/pterodactyl/vmounts
 
+  # how often to do a full disk check when inotify is used, this is to prevent gradual desync between the
+  # actual disk usage and the inotify events. 6 means that a full disk check will be done every 6 inotify disk checks.
+  # so, if disk_check_interval is 150 seconds, then a full disk check will be done every 900 seconds (15 minutes)
+  full_disk_check_every: 6
   # apply a real quota limit to each server
   # none, btrfs_subvolume, zfs_dataset, xfs_quota, (experimental) fuse_quota
   disk_limiter_mode: none

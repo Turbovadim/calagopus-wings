@@ -7,7 +7,7 @@ use axum::{
     response::IntoResponse,
 };
 use colored::Colorize;
-use russh::{keys::ssh_key::rand_core::OsRng, server::Server};
+use russh::server::Server;
 use std::{net::SocketAddr, path::Path, sync::Arc, time::Instant};
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
 use utoipa_axum::router::OpenApiRouter;
@@ -398,7 +398,7 @@ async fn main() {
                         );
 
                         let key = russh::keys::PrivateKey::random(
-                            &mut OsRng,
+                            &mut rand::rngs::ThreadRng::default(),
                             state
                                 .config
                                 .system

@@ -156,6 +156,9 @@ fn system_passwd_directory() -> String {
 fn system_disk_check_interval() -> u64 {
     150
 }
+fn system_full_disk_check_every() -> u64 {
+    6
+}
 fn system_disk_check_use_inotify() -> bool {
     true
 }
@@ -555,6 +558,8 @@ nestify::nest! {
 
             #[serde(default = "system_disk_check_interval")]
             pub disk_check_interval: u64,
+            #[serde(default = "system_full_disk_check_every")]
+            pub full_disk_check_every: u64,
             #[serde(default = "system_disk_check_use_inotify")]
             pub disk_check_use_inotify: bool,
             #[serde(default)]

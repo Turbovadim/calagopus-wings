@@ -137,6 +137,8 @@ impl Filesystem {
                 async move {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
+                    let mut full_disk_check_counter = 0;
+
                     loop {
                         let run_inner = async |paths_to_scan: Option<Vec<PathBuf>>| -> Result<(), anyhow::Error> {
                             tracing::debug!(
@@ -331,7 +333,12 @@ impl Filesystem {
                                 "skipping disk usage check due to server state inactivity"
                             );
                         } else {
-                            let paths_to_scan = if use_server_notifier.load(Ordering::Relaxed) {
+                            let paths_to_scan = if full_disk_check_counter
+                                % config.system.full_disk_check_every
+                                == 0
+                            {
+                                None
+                            } else if use_server_notifier.load(Ordering::Relaxed) {
                                 let paths = server_notifier.take_modified_paths().await;
 
                                 tracing::debug!(
@@ -343,6 +350,8 @@ impl Filesystem {
                             } else {
                                 None
                             };
+
+                            full_disk_check_counter += 1;
 
                             match run_inner(paths_to_scan).await {
                                 Ok(_) => {

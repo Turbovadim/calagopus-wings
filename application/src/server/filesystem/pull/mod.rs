@@ -1,7 +1,7 @@
 use crate::server::filesystem::virtualfs::VirtualWritableFilesystem;
 use anyhow::Context;
 use compact_str::ToCompactString;
-use rand::Rng;
+use rand::RngExt;
 use serde::Serialize;
 use std::{
     collections::HashMap,

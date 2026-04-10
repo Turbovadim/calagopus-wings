@@ -19,7 +19,7 @@ tokio = { version = "1.43.0", features = ["full"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 tokio-util = { version = "0.7.15", features = ["full"] }
 uuid = { version = "1.16.0", features = ["serde", "v4"] }
-rand = "0.9.1"
+rand = "0.10.0"
 regex = "1.12.2"
 
 [profile.dev.package."*"]
