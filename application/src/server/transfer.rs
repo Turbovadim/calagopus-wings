@@ -216,7 +216,7 @@ impl OutgoingServerTransfer {
                 ))
                 .ok();
 
-            let (files_sender, files_receiver) = async_channel::bounded(256 * (1 + multiplex_streams));
+            let (files_sender, files_receiver) = async_channel::bounded(512 * (1 + multiplex_streams));
 
             let (checksum_sender, checksum_receiver) = tokio::sync::oneshot::channel();
             let (mut checksummed_reader, checksummed_writer) = tokio::io::simplex(crate::TRANSFER_BUFFER_SIZE);

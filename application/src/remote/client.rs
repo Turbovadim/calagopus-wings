@@ -102,7 +102,7 @@ impl Client {
     fn skip_client_errors(err: &anyhow::Error, attempt: usize) -> bool {
         if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>()
             && reqwest_err.status().is_some_and(|s| s.is_client_error())
-            && attempt > 1
+            && attempt > 3
         {
             return false;
         }
