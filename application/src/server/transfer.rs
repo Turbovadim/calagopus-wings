@@ -11,6 +11,7 @@ use human_bytes::human_bytes;
 use serde::Deserialize;
 use sha2::Digest;
 use std::{
+    collections::VecDeque,
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
@@ -439,6 +440,7 @@ impl OutgoingServerTransfer {
                     let mut last_bytes_sent = 0;
                     let mut last_update_time = Instant::now();
                     let start_time = Instant::now();
+                    let mut history = VecDeque::new();
 
                     loop {
                         let now = Instant::now();
@@ -449,14 +451,23 @@ impl OutgoingServerTransfer {
                         let current_bytes_archived = bytes_archived.load(Ordering::SeqCst);
                         let current_bytes_sent = bytes_sent.load(Ordering::SeqCst);
 
+                        history.push_back((now, current_bytes_archived));
+                        while let Some(&(t, _)) = history.front() {
+                            if now.duration_since(t).as_secs_f64() > 30.0 {
+                                history.pop_front();
+                            } else {
+                                break;
+                            }
+                        }
+
                         let archive_rate = if elapsed_secs > 0.0 {
-                            (current_bytes_archived - last_bytes_archived) as f64 / elapsed_secs
+                            (current_bytes_archived.saturating_sub(last_bytes_archived)) as f64 / elapsed_secs
                         } else {
                             0.0
                         };
 
                         let network_rate = if elapsed_secs > 0.0 {
-                            (current_bytes_sent - last_bytes_sent) as f64 / elapsed_secs
+                            (current_bytes_sent.saturating_sub(last_bytes_sent)) as f64 / elapsed_secs
                         } else {
                             0.0
                         };
@@ -475,22 +486,35 @@ impl OutgoingServerTransfer {
                         let archive_percentage = (current_bytes_archived as f64 / bytes_total as f64) * 100.0;
                         let formatted_archive_percentage = format!("{:.2}%", archive_percentage);
 
-                        let time_estimate = if archive_rate > 0.0 {
-                            let remaining_bytes = bytes_total as f64 - current_bytes_archived as f64;
-                            let remaining_seconds = remaining_bytes / archive_rate;
+                        let time_estimate = if history.len() > 1 && current_bytes_archived < bytes_total {
+                            let &(oldest_time, oldest_progress) = history.front().unwrap();
+                            let &(newest_time, newest_progress) = history.back().unwrap();
 
-                            &if remaining_seconds < 60.0 {
-                                format!("{:.0}s", remaining_seconds)
-                            } else if remaining_seconds < 3600.0 {
-                                format!("{:.0}m {:.0}s", remaining_seconds / 60.0, remaining_seconds % 60.0)
+                            let delta_progress = newest_progress.saturating_sub(oldest_progress) as f64;
+                            let delta_time = newest_time.duration_since(oldest_time).as_secs_f64();
+
+                            if delta_progress > 0.0 && delta_time > 0.0 {
+                                let rate_30s = delta_progress / delta_time;
+                                let remaining_bytes = bytes_total.saturating_sub(newest_progress) as f64;
+                                let remaining_seconds = remaining_bytes / rate_30s;
+
+                                if remaining_seconds < 60.0 {
+                                    format!("{:.0}s", remaining_seconds)
+                                } else if remaining_seconds < 3600.0 {
+                                    format!("{:.0}m {:.0}s", remaining_seconds / 60.0, remaining_seconds % 60.0)
+                                } else {
+                                    format!("{:.1}h {:.0}m", 
+                                        remaining_seconds / 3600.0,
+                                        (remaining_seconds % 3600.0) / 60.0
+                                    )
+                                }
                             } else {
-                                format!("{:.1}h {:.0}m", 
-                                    remaining_seconds / 3600.0,
-                                    (remaining_seconds % 3600.0) / 60.0
-                                )
+                                "calculating...".to_string()
                             }
+                        } else if current_bytes_archived >= bytes_total {
+                            "0s".to_string()
                         } else {
-                            "unknown"
+                            "unknown".to_string()
                         };
 
                         let elapsed_time = if total_elapsed_secs < 60.0 {
