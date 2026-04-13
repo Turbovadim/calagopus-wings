@@ -328,7 +328,7 @@ mod post {
                                 archive_checksum = Some(inner.finish());
                             } else if field.name() == Some("checksum") {
                                 let archive_checksum = match archive_checksum.take() {
-                                    Some(checksum) => format!("{:x}", checksum),
+                                    Some(checksum) => hex::encode(checksum),
                                     None => {
                                         return Err(anyhow::anyhow!(
                                             "archive checksum does not match multipart checksum, None to be found"
@@ -386,7 +386,7 @@ mod post {
                                     None => {
                                         if field.name().is_some_and(|n| n.contains("checksum")) {
                                             let backup_checksum = match backup_checksum.take() {
-                                                Some(checksum) => format!("{:x}", checksum),
+                                                Some(checksum) => hex::encode(checksum),
                                                 None => {
                                                     return Err(anyhow::anyhow!(
                                                         "backup checksum does not match multipart checksum, None to be found"

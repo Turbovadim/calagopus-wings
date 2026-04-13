@@ -125,7 +125,7 @@ mod post {
 
         drop(file);
 
-        if format!("{:x}", hasher.finalize()) != data.sha256 {
+        if hex::encode(hasher.finalize()) != data.sha256 {
             tokio::fs::remove_file(tmp_file).await.ok();
 
             return ApiResponse::error("downloaded file does not match provided sha256")

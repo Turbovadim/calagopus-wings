@@ -150,7 +150,7 @@ mod get {
                 }
 
                 ApiResponse::new_serialized(Response {
-                    hash: compact_str::format_compact!("{:x}", hasher.finalize()),
+                    hash: hex::encode(hasher.finalize()).into(),
                 })
                 .ok()
             }

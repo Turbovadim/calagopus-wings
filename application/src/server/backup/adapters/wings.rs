@@ -249,7 +249,7 @@ impl BackupCreateExt for WingsBackup {
         loop {
             match file.read(&mut buffer).await? {
                 0 => break,
-                bytes_read => checksum_writer.write_all(&buffer[..bytes_read])?,
+                bytes_read => checksum_writer.update(&buffer[..bytes_read]),
             }
         }
 
@@ -262,7 +262,7 @@ impl BackupCreateExt for WingsBackup {
         }
 
         Ok(RawServerBackup {
-            checksum: format!("{:x}", checksum_writer.finalize()),
+            checksum: hex::encode(checksum_writer.finalize()),
             checksum_type: "sha1".into(),
             size,
             files: total_files,

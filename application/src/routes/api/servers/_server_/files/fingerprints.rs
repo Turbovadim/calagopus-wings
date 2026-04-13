@@ -142,7 +142,7 @@ mod get {
                                 hasher.update(&buffer[..bytes_read]);
                             }
 
-                            compact_str::format_compact!("{:x}", hasher.finalize())
+                            hex::encode(hasher.finalize()).into()
                         }
                         Algorithm::Sha224 => {
                             let mut hasher = sha2::Sha224::new();
@@ -156,7 +156,7 @@ mod get {
                                 hasher.update(&buffer[..bytes_read]);
                             }
 
-                            compact_str::format_compact!("{:x}", hasher.finalize())
+                            hex::encode(hasher.finalize()).into()
                         }
                         Algorithm::Sha256 => {
                             let mut hasher = sha2::Sha256::new();
@@ -170,7 +170,7 @@ mod get {
                                 hasher.update(&buffer[..bytes_read]);
                             }
 
-                            compact_str::format_compact!("{:x}", hasher.finalize())
+                            hex::encode(hasher.finalize()).into()
                         }
                         Algorithm::Sha384 => {
                             let mut hasher = sha2::Sha384::new();
@@ -184,7 +184,7 @@ mod get {
                                 hasher.update(&buffer[..bytes_read]);
                             }
 
-                            compact_str::format_compact!("{:x}", hasher.finalize())
+                            hex::encode(hasher.finalize()).into()
                         }
                         Algorithm::Sha512 => {
                             let mut hasher = sha2::Sha512::new();
@@ -198,7 +198,7 @@ mod get {
                                 hasher.update(&buffer[..bytes_read]);
                             }
 
-                            compact_str::format_compact!("{:x}", hasher.finalize())
+                            hex::encode(hasher.finalize()).into()
                         }
                         Algorithm::Curseforge => {
                             #[inline]

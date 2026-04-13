@@ -1,7 +1,5 @@
-use anyhow::Context;
 use compact_str::ToCompactString;
-use hmac::digest::KeyInit;
-use jwt::VerifyWithKey;
+use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
@@ -64,7 +62,6 @@ impl BasePayload {
         }
 
         if let Some(iat) = self.issued_at {
-            // allow a 5 second clock skew
             if iat - 5 > now || iat < client.boot_time.timestamp() {
                 return Err(JwtValidateError::InvalidIssuedAt);
             }
@@ -86,7 +83,8 @@ impl BasePayload {
 type CountingMap = HashMap<compact_str::CompactString, (usize, chrono::DateTime<chrono::Utc>)>;
 
 pub struct JwtClient {
-    pub key: hmac::Hmac<sha2::Sha256>,
+    pub decoding_key: DecodingKey,
+    pub validation: Validation,
     pub boot_time: chrono::DateTime<chrono::Utc>,
     pub max_jwt_uses: usize,
 
@@ -123,10 +121,14 @@ impl JwtClient {
             }
         });
 
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_exp = false;
+        validation.validate_aud = false;
+        validation.required_spec_claims.clear();
+
         Self {
-            key: hmac::Hmac::new_from_slice(config.token.as_bytes())
-                .context("invalid token while constructing jwt client")
-                .unwrap(),
+            decoding_key: DecodingKey::from_secret(config.token.as_bytes()),
+            validation,
             boot_time: chrono::Utc::now(),
             max_jwt_uses: config.api.max_jwt_uses,
 
@@ -136,8 +138,12 @@ impl JwtClient {
     }
 
     #[inline]
-    pub fn verify<T: DeserializeOwned>(&self, token: &str) -> Result<T, jwt::Error> {
-        token.verify_with_key(&self.key)
+    pub fn verify<T: DeserializeOwned>(
+        &self,
+        token: &str,
+    ) -> Result<T, jsonwebtoken::errors::Error> {
+        let data = jsonwebtoken::decode::<T>(token, &self.decoding_key, &self.validation)?;
+        Ok(data.claims)
     }
 
     pub async fn limited_jwt_id(&self, id: &str) -> bool {

@@ -277,7 +277,7 @@ impl OutgoingServerTransfer {
                     }
 
                     checksum_sender
-                        .send(format!("{:x}", hasher.finalize()))
+                        .send(hex::encode(hasher.finalize()))
                         .ok();
                     writer.shutdown().await?;
 
@@ -381,7 +381,7 @@ impl OutgoingServerTransfer {
 
                             let (checksum_sender, checksum_receiver) = tokio::sync::oneshot::channel();
                             tokio::spawn(async move {
-                                checksum_sender.send(format!("{:x}", hasher.lock().await.finalize_reset())).ok();
+                                checksum_sender.send(hex::encode(hasher.lock().await.finalize_reset())).ok();
                             });
 
                             bytes_total.fetch_add(
@@ -625,7 +625,7 @@ impl OutgoingServerTransfer {
                             bytes_sent.fetch_add(bytes_read as u64, Ordering::Relaxed);
                         }
 
-                        checksum_sender.send(format!("{:x}", hasher.finalize())).ok();
+                        checksum_sender.send(hex::encode(hasher.finalize())).ok();
                         writer.flush().await?;
                         writer.shutdown().await?;
 

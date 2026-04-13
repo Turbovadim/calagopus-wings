@@ -22,6 +22,7 @@ reqwest = { workspace = true }
 tokio = { workspace = true }
 chrono = { workspace = true }
 colored = "3.0.0"
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
 nestify = "0.3.3"
 rayon = "1.10.0"
 serde_norway = "0.9.42"
@@ -33,14 +34,12 @@ tar = "0.4.44"
 zip = { version = "8.0.0", default-features = false, features = ["bzip2", "deflate", "time", "zstd", "lzma", "xz"] }
 sevenz-rust2 = { version = "0.20.0", features = ["deflate", "compress", "brotli", "zstd", "bzip2", "ppmd", "lz4"] }
 flate2 = { version = "1.1.1", default-features = false, features = ["zlib-rs"] }
-jwt = "0.16.0"
-hmac = { version = "0.12.1", features = ["std"] }
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 ddup-bak = "0.8.0"
 infer = "0.19.0"
 rustls = { version = "0.23.27", features = ["aws-lc-rs"] }
 ignore = { version = "0.4.23", features = ["simd-accel"] }
-sha1 = "0.10.6"
+sha1 = "0.11.0"
 futures = "0.3.31"
 russh = "0.60.0"
 russh-sftp = "2.1.1"
@@ -86,6 +85,7 @@ toml = { version = "1.0.1", features = ["preserve_order"] }
 sntpc-net-tokio = "1.0.1"
 sntpc = { version = "0.9.0", features = ["std"] }
 notify = "8.2.0"
+hex = "0.4.3"
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 tikv-jemallocator = "0.6.0"

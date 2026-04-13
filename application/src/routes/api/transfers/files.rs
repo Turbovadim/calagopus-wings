@@ -260,7 +260,7 @@ mod post {
                                     }
                                     Some("checksum") => {
                                         let archive_checksum = match archive_checksum.take() {
-                                            Some(checksum) => format!("{:x}", checksum),
+                                            Some(checksum) => hex::encode(checksum),
                                             None => {
                                                 return Err(anyhow::anyhow!(
                                                     "archive checksum does not match multipart checksum, None to be found"

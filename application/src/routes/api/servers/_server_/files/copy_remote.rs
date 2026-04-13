@@ -405,9 +405,7 @@ mod post {
                                     writer.write_all(&buffer[..bytes_read]).await?;
                                 }
 
-                                checksum_sender
-                                    .send(format!("{:x}", hasher.finalize()))
-                                    .ok();
+                                checksum_sender.send(hex::encode(hasher.finalize())).ok();
                                 writer.shutdown().await?;
 
                                 Ok::<_, anyhow::Error>(())

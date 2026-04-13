@@ -189,7 +189,7 @@ impl BackupCreateExt for S3Backup {
                 total.fetch_add(bytes_read as u64, Ordering::Relaxed);
             }
 
-            Ok::<_, anyhow::Error>(format!("{:x}", sha1.finalize()))
+            Ok::<_, anyhow::Error>(hex::encode(sha1.finalize()))
         };
 
         let total_task = {
