@@ -22,7 +22,10 @@ pub const GIT_COMMIT: &str = env!("CARGO_GIT_COMMIT");
 pub const GIT_BRANCH: &str = env!("CARGO_GIT_BRANCH");
 pub const TARGET: &str = env!("CARGO_TARGET");
 
+/// 32 KiB - used for general IO
 pub const BUFFER_SIZE: usize = 32 * 1024;
+/// 4 MiB - used for transfers
+pub const TRANSFER_BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
 pub fn full_version() -> String {
     if GIT_BRANCH == "unknown" {

@@ -440,12 +440,13 @@ impl BackupExt for S3Backup {
                 reader,
                 CompressionType::Gz,
             )?;
+            let reader = std::io::BufReader::with_capacity(crate::TRANSFER_BUFFER_SIZE, reader);
 
             let mut archive = tar::Archive::new(reader);
             let mut directory_entries = Vec::new();
             let entries = archive.entries()?;
 
-            let mut read_buffer = vec![0; crate::BUFFER_SIZE];
+            let mut read_buffer = vec![0; crate::TRANSFER_BUFFER_SIZE];
             for entry in entries {
                 let mut entry = entry?;
                 let path = entry.path()?;

@@ -185,7 +185,7 @@ mod post {
                                         archive.set_ignore_zeros(true);
                                         let mut entries = archive.entries()?;
 
-                                        let mut read_buffer = vec![0; crate::BUFFER_SIZE];
+                                        let mut read_buffer = vec![0; crate::TRANSFER_BUFFER_SIZE];
                                         while let Some(Ok(mut entry)) = entries.next() {
                                             let path = entry.path()?;
 

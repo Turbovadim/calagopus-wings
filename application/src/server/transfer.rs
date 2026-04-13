@@ -218,8 +218,8 @@ impl OutgoingServerTransfer {
             let (files_sender, files_receiver) = async_channel::bounded(256);
 
             let (checksum_sender, checksum_receiver) = tokio::sync::oneshot::channel();
-            let (mut checksummed_reader, checksummed_writer) = tokio::io::simplex(crate::BUFFER_SIZE);
-            let (reader, mut writer) = tokio::io::simplex(crate::BUFFER_SIZE);
+            let (mut checksummed_reader, checksummed_writer) = tokio::io::simplex(crate::TRANSFER_BUFFER_SIZE);
+            let (reader, mut writer) = tokio::io::simplex(crate::TRANSFER_BUFFER_SIZE);
 
             fn get_archive_task(
                 files_receiver: async_channel::Receiver<PathBuf>,
@@ -263,7 +263,7 @@ impl OutgoingServerTransfer {
                 async move {
                     let mut hasher = sha2::Sha256::new();
 
-                    let mut buffer = vec![0; crate::BUFFER_SIZE];
+                    let mut buffer = vec![0; crate::TRANSFER_BUFFER_SIZE];
                     loop {
                         let bytes_read = checksummed_reader.read(&mut buffer).await?;
                         if crate::unlikely(bytes_read == 0) {
@@ -301,7 +301,7 @@ impl OutgoingServerTransfer {
                 .part(
                     "archive",
                     reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(
-                        tokio_util::io::ReaderStream::with_capacity(reader, crate::BUFFER_SIZE),
+                        tokio_util::io::ReaderStream::with_capacity(reader, crate::TRANSFER_BUFFER_SIZE),
                     ))
                     .file_name(format!("archive.{}", archive_format.extension()))
                     .mime_str("application/x-tar")
@@ -330,7 +330,7 @@ impl OutgoingServerTransfer {
                                 install_logs,
                                 Arc::clone(&bytes_archived),
                             ),
-                            crate::BUFFER_SIZE,
+                            crate::TRANSFER_BUFFER_SIZE,
                         ),
                     ))
                     .file_name("install.log")
@@ -395,7 +395,7 @@ impl OutgoingServerTransfer {
                                 .part(
                                     format!("backup-{}", backup.uuid()),
                                     reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(
-                                        tokio_util::io::ReaderStream::with_capacity(reader, crate::BUFFER_SIZE),
+                                        tokio_util::io::ReaderStream::with_capacity(reader, crate::TRANSFER_BUFFER_SIZE),
                                     ))
                                     .file_name(file_name.file_name().unwrap_or_default().to_string_lossy().to_string())
                                     .mime_str("backup/wings")
@@ -568,8 +568,8 @@ impl OutgoingServerTransfer {
 
             for i in 0..multiplex_streams {
                 let (checksum_sender, checksum_receiver) = tokio::sync::oneshot::channel();
-                let (mut checksummed_reader, checksummed_writer) = tokio::io::simplex(crate::BUFFER_SIZE);
-                let (reader, mut writer) = tokio::io::simplex(crate::BUFFER_SIZE);
+                let (mut checksummed_reader, checksummed_writer) = tokio::io::simplex(crate::TRANSFER_BUFFER_SIZE);
+                let (reader, mut writer) = tokio::io::simplex(crate::TRANSFER_BUFFER_SIZE);
 
                 let archive_task = get_archive_task(
                     files_receiver.clone(),
@@ -589,7 +589,7 @@ impl OutgoingServerTransfer {
                     async move {
                         let mut hasher = sha2::Sha256::new();
 
-                        let mut buffer = vec![0; crate::BUFFER_SIZE];
+                        let mut buffer = vec![0; crate::TRANSFER_BUFFER_SIZE];
                         loop {
                             let bytes_read = checksummed_reader.read(&mut buffer).await?;
                             if crate::unlikely(bytes_read == 0) {
@@ -613,7 +613,7 @@ impl OutgoingServerTransfer {
                     .part(
                         "archive",
                         reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(
-                            tokio_util::io::ReaderStream::with_capacity(reader, crate::BUFFER_SIZE),
+                            tokio_util::io::ReaderStream::with_capacity(reader, crate::TRANSFER_BUFFER_SIZE),
                         ))
                         .file_name(format!("archive.{}", archive_format.extension()))
                         .mime_str("application/x-tar")
