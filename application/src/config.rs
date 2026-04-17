@@ -153,6 +153,10 @@ fn system_timezone() -> compact_str::CompactString {
 fn system_passwd_directory() -> String {
     "/run/wings/etc".to_string()
 }
+#[cfg(unix)]
+fn system_machine_id_enabled() -> bool {
+    true
+}
 fn system_disk_check_interval() -> u64 {
     150
 }
@@ -554,6 +558,15 @@ nestify::nest! {
                 #[cfg(unix)]
                 #[serde(default = "system_passwd_directory")]
                 pub directory: String,
+            },
+
+            #[cfg(unix)]
+            #[serde(default)]
+            #[schema(inline)]
+            pub machine_id: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemMachineId {
+                #[cfg(unix)]
+                #[serde(default = "system_machine_id_enabled")]
+                pub enabled: bool,
             },
 
             #[serde(default = "system_disk_check_interval")]

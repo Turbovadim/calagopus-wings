@@ -2,7 +2,7 @@
 resolver = "3"
 members = ["application", "unrar-rs"]
 default-members = ["application"]
-package.rust-version = "1.93.0"
+package.rust-version = "1.95.0"
 
 [workspace.dependencies]
 anyhow = "1.0.98"

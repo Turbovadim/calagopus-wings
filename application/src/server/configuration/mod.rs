@@ -147,29 +147,32 @@ impl ServerConfiguration {
     async fn vmounts(&self, config: &crate::config::Config) -> Vec<Mount> {
         let mut mounts = Vec::new();
 
-        mounts.push(Mount {
-            default: false,
-            target: "/etc/machine-id".into(),
-            source: self
-                .machine_id_path(config)
-                .to_string_lossy()
-                .to_compact_string(),
-            read_only: true,
-        });
-        if !config.system.user.rootless.enabled
-            && tokio::fs::metadata("/sys/class/dmi/id/product_uuid")
-                .await
-                .is_ok()
-        {
+        #[cfg(unix)]
+        if config.system.machine_id.enabled {
             mounts.push(Mount {
                 default: false,
-                target: "/sys/class/dmi/id/product_uuid".into(),
+                target: "/etc/machine-id".into(),
                 source: self
-                    .machine_uuid_path(config)
+                    .machine_id_path(config)
                     .to_string_lossy()
                     .to_compact_string(),
                 read_only: true,
             });
+            if !config.system.user.rootless.enabled
+                && tokio::fs::metadata("/sys/class/dmi/id/product_uuid")
+                    .await
+                    .is_ok()
+            {
+                mounts.push(Mount {
+                    default: false,
+                    target: "/sys/class/dmi/id/product_uuid".into(),
+                    source: self
+                        .machine_uuid_path(config)
+                        .to_string_lossy()
+                        .to_compact_string(),
+                    read_only: true,
+                });
+            }
         }
 
         mounts
