@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-The following versions of Calagopus panel are currently receiving security updates:
+The following versions of Calagopus wings are currently receiving security updates:
 
 | Version | Supported              |
 |---------|------------------------|
