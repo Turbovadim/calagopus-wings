@@ -50,7 +50,7 @@ mod post {
 
         let backup = match state
             .backup_manager
-            .find_adapter(data.adapter, backup_id)
+            .find_adapter(&state, data.adapter, backup_id)
             .await?
         {
             Some(backup) => backup,

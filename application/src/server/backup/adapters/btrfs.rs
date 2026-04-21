@@ -59,19 +59,16 @@ impl BtrfsBackup {
 
 #[async_trait::async_trait]
 impl BackupFindExt for BtrfsBackup {
-    async fn exists(
-        config: &Arc<crate::config::Config>,
-        uuid: uuid::Uuid,
-    ) -> Result<bool, anyhow::Error> {
-        let path = Self::get_backup_path(config, uuid);
+    async fn exists(state: &crate::routes::State, uuid: uuid::Uuid) -> Result<bool, anyhow::Error> {
+        let path = Self::get_backup_path(&state.config, uuid);
         Ok(tokio::fs::metadata(&path).await.is_ok())
     }
 
     async fn find(
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Backup>, anyhow::Error> {
-        if Self::exists(config, uuid).await? {
+        if Self::exists(state, uuid).await? {
             Ok(Some(Backup::Btrfs(Self { uuid })))
         } else {
             Ok(None)
@@ -226,11 +223,11 @@ impl BackupExt for BtrfsBackup {
 
     async fn download(
         &self,
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         archive_format: StreamableArchiveFormat,
         _range: Option<ByteRange>,
     ) -> Result<ApiResponse, anyhow::Error> {
-        let subvolume_path = Self::get_subvolume_path(config, self.uuid);
+        let subvolume_path = Self::get_subvolume_path(&state.config, self.uuid);
 
         if tokio::fs::metadata(&subvolume_path).await.is_err() {
             return Err(anyhow::anyhow!(
@@ -241,12 +238,12 @@ impl BackupExt for BtrfsBackup {
 
         let filesystem = crate::server::filesystem::cap::CapFilesystem::new(subvolume_path).await?;
         let names = filesystem.async_read_dir_all(Path::new("")).await?;
-        let ignore = Self::get_ignore(config, self.uuid).await?;
+        let ignore = Self::get_ignore(&state.config, self.uuid).await?;
 
         let (reader, writer) = tokio::io::simplex(crate::BUFFER_SIZE);
 
         tokio::spawn({
-            let config = Arc::clone(config);
+            let config = Arc::clone(&state.config);
 
             async move {
                 let writer = tokio_util::io::SyncIoBridge::new(writer);
@@ -433,8 +430,8 @@ impl BackupExt for BtrfsBackup {
         Ok(())
     }
 
-    async fn delete(&self, config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error> {
-        let subvolume_path = Self::get_subvolume_path(config, self.uuid);
+    async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error> {
+        let subvolume_path = Self::get_subvolume_path(&state.config, self.uuid);
 
         if tokio::fs::metadata(&subvolume_path).await.is_err() {
             return Ok(());

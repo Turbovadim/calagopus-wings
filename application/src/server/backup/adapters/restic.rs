@@ -112,28 +112,25 @@ fn get_restic_cache_dir(config: &crate::config::Config) -> String {
 
 #[async_trait::async_trait]
 impl BackupFindExt for ResticBackup {
-    async fn exists(
-        config: &Arc<crate::config::Config>,
-        uuid: uuid::Uuid,
-    ) -> Result<bool, anyhow::Error> {
+    async fn exists(state: &crate::routes::State, uuid: uuid::Uuid) -> Result<bool, anyhow::Error> {
         if RESTIC_BACKUP_CACHE.read().await.contains_key(&uuid) {
             return Ok(true);
         }
 
-        if tokio::fs::metadata(&config.system.backups.restic.password_file)
+        if tokio::fs::metadata(&state.config.system.backups.restic.password_file)
             .await
             .is_ok()
         {
             let output = match Command::new("restic")
-                .envs(&config.system.backups.restic.environment)
+                .envs(&state.config.system.backups.restic.environment)
                 .arg("--json")
                 .arg("--no-lock")
                 .arg("--repo")
-                .arg(&config.system.backups.restic.repository)
+                .arg(&state.config.system.backups.restic.repository)
                 .arg("--password-file")
-                .arg(&config.system.backups.restic.password_file)
+                .arg(&state.config.system.backups.restic.password_file)
                 .arg("--cache-dir")
-                .arg(get_restic_cache_dir(config))
+                .arg(get_restic_cache_dir(&state.config))
                 .arg("snapshots")
                 .output()
                 .await
@@ -151,10 +148,10 @@ impl BackupFindExt for ResticBackup {
                 let snapshots: Vec<ResticSnapshot> =
                     serde_json::from_slice(&output.stdout).unwrap_or_default();
                 let configuration = Arc::new(ResticBackupConfiguration {
-                    repository: config.system.backups.restic.repository.clone(),
-                    password_file: Some(config.system.backups.restic.password_file.clone()),
-                    retry_lock_seconds: config.system.backups.restic.retry_lock_seconds,
-                    environment: config.system.backups.restic.environment.clone(),
+                    repository: state.config.system.backups.restic.repository.clone(),
+                    password_file: Some(state.config.system.backups.restic.password_file.clone()),
+                    retry_lock_seconds: state.config.system.backups.restic.retry_lock_seconds,
+                    environment: state.config.system.backups.restic.environment.clone(),
                 });
 
                 let mut found = false;
@@ -182,7 +179,7 @@ impl BackupFindExt for ResticBackup {
             }
         }
 
-        if let Ok(configuration) = config.client.backup_restic_configuration(uuid).await {
+        if let Ok(configuration) = state.config.client.backup_restic_configuration(uuid).await {
             let output = match Command::new("restic")
                 .envs(&configuration.environment)
                 .arg("--json")
@@ -190,7 +187,7 @@ impl BackupFindExt for ResticBackup {
                 .arg("--repo")
                 .arg(&configuration.repository)
                 .arg("--cache-dir")
-                .arg(get_restic_cache_dir(config))
+                .arg(get_restic_cache_dir(&state.config))
                 .arg("snapshots")
                 .output()
                 .await
@@ -238,7 +235,7 @@ impl BackupFindExt for ResticBackup {
     }
 
     async fn find(
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Backup>, anyhow::Error> {
         if let Some((snapshot, configuration)) = RESTIC_BACKUP_CACHE.read().await.get(&uuid) {
@@ -246,7 +243,7 @@ impl BackupFindExt for ResticBackup {
                 uuid,
                 short_id: snapshot.short_id.clone(),
                 total_bytes_processed: snapshot.summary.total_bytes_processed,
-                config: Arc::clone(config),
+                config: Arc::clone(&state.config),
                 server_path: match snapshot.paths.first() {
                     Some(path) => PathBuf::from(path),
                     None => {
@@ -260,20 +257,20 @@ impl BackupFindExt for ResticBackup {
             })));
         }
 
-        if tokio::fs::metadata(&config.system.backups.restic.password_file)
+        if tokio::fs::metadata(&state.config.system.backups.restic.password_file)
             .await
             .is_ok()
         {
             let output = match Command::new("restic")
-                .envs(&config.system.backups.restic.environment)
+                .envs(&state.config.system.backups.restic.environment)
                 .arg("--json")
                 .arg("--no-lock")
                 .arg("--repo")
-                .arg(&config.system.backups.restic.repository)
+                .arg(&state.config.system.backups.restic.repository)
                 .arg("--password-file")
-                .arg(&config.system.backups.restic.password_file)
+                .arg(&state.config.system.backups.restic.password_file)
                 .arg("--cache-dir")
-                .arg(get_restic_cache_dir(config))
+                .arg(get_restic_cache_dir(&state.config))
                 .arg("snapshots")
                 .output()
                 .await
@@ -288,10 +285,10 @@ impl BackupFindExt for ResticBackup {
                 let snapshots: Vec<ResticSnapshot> =
                     serde_json::from_slice(&output.stdout).unwrap_or_default();
                 let configuration = Arc::new(ResticBackupConfiguration {
-                    repository: config.system.backups.restic.repository.clone(),
-                    password_file: Some(config.system.backups.restic.password_file.clone()),
-                    retry_lock_seconds: config.system.backups.restic.retry_lock_seconds,
-                    environment: config.system.backups.restic.environment.clone(),
+                    repository: state.config.system.backups.restic.repository.clone(),
+                    password_file: Some(state.config.system.backups.restic.password_file.clone()),
+                    retry_lock_seconds: state.config.system.backups.restic.retry_lock_seconds,
+                    environment: state.config.system.backups.restic.environment.clone(),
                 });
 
                 let mut backup = None;
@@ -310,7 +307,7 @@ impl BackupFindExt for ResticBackup {
                             uuid,
                             short_id: snapshot.short_id.clone(),
                             total_bytes_processed: snapshot.summary.total_bytes_processed,
-                            config: Arc::clone(config),
+                            config: Arc::clone(&state.config),
                             server_path: match snapshot.paths.first() {
                                 Some(path) => PathBuf::from(path),
                                 None => {
@@ -334,7 +331,7 @@ impl BackupFindExt for ResticBackup {
             }
         }
 
-        if let Ok(configuration) = config.client.backup_restic_configuration(uuid).await {
+        if let Ok(configuration) = state.config.client.backup_restic_configuration(uuid).await {
             let output = match Command::new("restic")
                 .envs(&configuration.environment)
                 .arg("--json")
@@ -342,7 +339,7 @@ impl BackupFindExt for ResticBackup {
                 .arg("--repo")
                 .arg(&configuration.repository)
                 .arg("--cache-dir")
-                .arg(get_restic_cache_dir(config))
+                .arg(get_restic_cache_dir(&state.config))
                 .arg("snapshots")
                 .output()
                 .await
@@ -374,7 +371,7 @@ impl BackupFindExt for ResticBackup {
                             uuid,
                             short_id: snapshot.short_id.clone(),
                             total_bytes_processed: snapshot.summary.total_bytes_processed,
-                            config: Arc::clone(config),
+                            config: Arc::clone(&state.config),
                             server_path: match snapshot.paths.first() {
                                 Some(path) => PathBuf::from(path),
                                 None => {
@@ -626,11 +623,11 @@ impl BackupExt for ResticBackup {
 
     async fn download(
         &self,
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         archive_format: StreamableArchiveFormat,
         _range: Option<ByteRange>,
     ) -> Result<crate::response::ApiResponse, anyhow::Error> {
-        let compression_level = config.system.backups.compression_level;
+        let compression_level = state.config.system.backups.compression_level;
         let (reader, writer) = tokio::io::simplex(crate::BUFFER_SIZE);
 
         match archive_format {
@@ -643,7 +640,7 @@ impl BackupExt for ResticBackup {
                     .arg(&self.configuration.repository)
                     .args(self.configuration.password())
                     .arg("--cache-dir")
-                    .arg(get_restic_cache_dir(config))
+                    .arg(get_restic_cache_dir(&state.config))
                     .arg("dump")
                     .arg(format!("{}:{}", self.short_id, self.server_path.display()))
                     .arg("/")
@@ -811,7 +808,7 @@ impl BackupExt for ResticBackup {
         Ok(())
     }
 
-    async fn delete(&self, _config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error> {
+    async fn delete(&self, _state: &crate::routes::State) -> Result<(), anyhow::Error> {
         let output = Command::new("restic")
             .envs(&self.configuration.environment)
             .arg("--repo")

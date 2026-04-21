@@ -87,18 +87,15 @@ impl WingsBackup {
 
 #[async_trait::async_trait]
 impl BackupFindExt for WingsBackup {
-    async fn exists(
-        config: &Arc<crate::config::Config>,
-        uuid: uuid::Uuid,
-    ) -> Result<bool, anyhow::Error> {
-        Ok(Self::get_first_file_name(config, uuid).await.is_ok())
+    async fn exists(state: &crate::routes::State, uuid: uuid::Uuid) -> Result<bool, anyhow::Error> {
+        Ok(Self::get_first_file_name(&state.config, uuid).await.is_ok())
     }
 
     async fn find(
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Backup>, anyhow::Error> {
-        if let Ok((format, path)) = Self::get_first_file_name(config, uuid).await {
+        if let Ok((format, path)) = Self::get_first_file_name(&state.config, uuid).await {
             Ok(Some(Backup::Wings(Self { uuid, format, path })))
         } else {
             Ok(None)
@@ -286,7 +283,7 @@ impl BackupExt for WingsBackup {
 
     async fn download(
         &self,
-        _config: &Arc<crate::config::Config>,
+        _state: &crate::routes::State,
         _archive_format: StreamableArchiveFormat,
         range: Option<ByteRange>,
     ) -> Result<ApiResponse, anyhow::Error> {
@@ -772,7 +769,7 @@ impl BackupExt for WingsBackup {
         Ok(())
     }
 
-    async fn delete(&self, _config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error> {
+    async fn delete(&self, _state: &crate::routes::State) -> Result<(), anyhow::Error> {
         tokio::fs::remove_file(&self.path).await?;
 
         Ok(())

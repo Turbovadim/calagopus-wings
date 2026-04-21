@@ -77,7 +77,11 @@ mod get {
                 .ok();
         }
 
-        let backup = match state.backup_manager.find(payload.backup_uuid).await? {
+        let backup = match state
+            .backup_manager
+            .find(&state, payload.backup_uuid)
+            .await?
+        {
             Some(backup) => backup,
             None => {
                 return ApiResponse::error("backup not found")
@@ -88,7 +92,7 @@ mod get {
 
         match backup
             .download(
-                &state.config,
+                &state,
                 data.archive_format,
                 ByteRange::from_headers(&headers),
             )

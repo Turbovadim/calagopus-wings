@@ -35,7 +35,7 @@ mod delete {
         server: GetServer,
         Path((_server, backup_id)): Path<(uuid::Uuid, uuid::Uuid)>,
     ) -> ApiResponseResult {
-        let backup = match state.backup_manager.find(backup_id).await? {
+        let backup = match state.backup_manager.find(&state, backup_id).await? {
             Some(backup) => backup,
             None => {
                 return ApiResponse::error("backup not found")
@@ -45,7 +45,7 @@ mod delete {
         };
 
         tokio::spawn(async move {
-            if let Err(err) = backup.delete(&state.config).await {
+            if let Err(err) = backup.delete(&state).await {
                 tracing::error!(
                     server = %server.uuid,
                     backup = %backup.uuid(),

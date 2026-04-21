@@ -36,7 +36,7 @@ mod delete {
     ) -> ApiResponseResult {
         let backup = match state
             .backup_manager
-            .find_adapter(data.adapter, backup_id)
+            .find_adapter(&state, data.adapter, backup_id)
             .await?
         {
             Some(backup) => backup,
@@ -48,7 +48,7 @@ mod delete {
         };
 
         tokio::spawn(async move {
-            if let Err(err) = backup.delete(&state.config).await {
+            if let Err(err) = backup.delete(&state).await {
                 tracing::error!(
                     backup = %backup.uuid(),
                     adapter = ?backup.adapter(),

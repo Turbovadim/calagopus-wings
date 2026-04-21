@@ -341,7 +341,7 @@ impl OutgoingServerTransfer {
             }
 
             for backup in &backups {
-                if let Ok(Some(backup)) = backup_manager.find(*backup).await {
+                if let Ok(Some(backup)) = backup_manager.find(&server.app_state, *backup).await {
                     match backup.adapter() {
                         super::backup::adapters::BackupAdapter::Wings => {
                             let hasher = Arc::new(Mutex::new(sha2::Sha256::new()));
@@ -704,9 +704,9 @@ impl OutgoingServerTransfer {
 
             if delete_backups {
                 for backup in backups {
-                    match backup_manager.find(backup).await {
+                    match backup_manager.find(&server.app_state, backup).await {
                         Ok(Some(backup)) => {
-                            if let Err(err) = backup.delete(&server.app_state.config).await {
+                            if let Err(err) = backup.delete(&server.app_state).await {
                                 tracing::error!(
                                     server = %server.uuid,
                                     "failed to delete backup {}: {}",

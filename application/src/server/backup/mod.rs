@@ -46,17 +46,17 @@ impl Backup {
 
     pub async fn download(
         &self,
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         archive_format: StreamableArchiveFormat,
         range: Option<ByteRange>,
     ) -> Result<ApiResponse, anyhow::Error> {
         match self {
-            Backup::Wings(backup) => backup.download(config, archive_format, range).await,
-            Backup::S3(backup) => backup.download(config, archive_format, range).await,
-            Backup::DdupBak(backup) => backup.download(config, archive_format, range).await,
-            Backup::Btrfs(backup) => backup.download(config, archive_format, range).await,
-            Backup::Zfs(backup) => backup.download(config, archive_format, range).await,
-            Backup::Restic(backup) => backup.download(config, archive_format, range).await,
+            Backup::Wings(backup) => backup.download(state, archive_format, range).await,
+            Backup::S3(backup) => backup.download(state, archive_format, range).await,
+            Backup::DdupBak(backup) => backup.download(state, archive_format, range).await,
+            Backup::Btrfs(backup) => backup.download(state, archive_format, range).await,
+            Backup::Zfs(backup) => backup.download(state, archive_format, range).await,
+            Backup::Restic(backup) => backup.download(state, archive_format, range).await,
         }
     }
 
@@ -77,14 +77,14 @@ impl Backup {
         }
     }
 
-    pub async fn delete(&self, config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error> {
+    pub async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error> {
         match self {
-            Backup::Wings(backup) => backup.delete(config).await,
-            Backup::S3(backup) => backup.delete(config).await,
-            Backup::DdupBak(backup) => backup.delete(config).await,
-            Backup::Btrfs(backup) => backup.delete(config).await,
-            Backup::Zfs(backup) => backup.delete(config).await,
-            Backup::Restic(backup) => backup.delete(config).await,
+            Backup::Wings(backup) => backup.delete(state).await,
+            Backup::S3(backup) => backup.delete(state).await,
+            Backup::DdupBak(backup) => backup.delete(state).await,
+            Backup::Btrfs(backup) => backup.delete(state).await,
+            Backup::Zfs(backup) => backup.delete(state).await,
+            Backup::Restic(backup) => backup.delete(state).await,
         }
     }
 
@@ -105,12 +105,9 @@ impl Backup {
 
 #[async_trait::async_trait]
 pub trait BackupFindExt {
-    async fn exists(
-        config: &Arc<crate::config::Config>,
-        uuid: uuid::Uuid,
-    ) -> Result<bool, anyhow::Error>;
+    async fn exists(state: &crate::routes::State, uuid: uuid::Uuid) -> Result<bool, anyhow::Error>;
     async fn find(
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Backup>, anyhow::Error>;
 }
@@ -133,7 +130,7 @@ pub trait BackupExt {
 
     async fn download(
         &self,
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         archive_format: StreamableArchiveFormat,
         range: Option<ByteRange>,
     ) -> Result<ApiResponse, anyhow::Error>;
@@ -145,7 +142,7 @@ pub trait BackupExt {
         total: Arc<AtomicU64>,
         download_url: Option<compact_str::CompactString>,
     ) -> Result<(), anyhow::Error>;
-    async fn delete(&self, config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error>;
+    async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error>;
 
     async fn browse(
         &self,

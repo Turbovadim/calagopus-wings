@@ -287,9 +287,7 @@ async fn main() {
         docker: Arc::clone(&docker),
         stats_manager: Arc::new(wings_rs::stats::StatsManager::default()),
         server_manager: Arc::new(wings_rs::server::manager::ServerManager::new(&servers)),
-        backup_manager: Arc::new(wings_rs::server::backup::manager::BackupManager::new(
-            Arc::clone(&config),
-        )),
+        backup_manager: Arc::new(wings_rs::server::backup::manager::BackupManager::default()),
         inotify_manager: Arc::new(
             wings_rs::server::filesystem::inotify::InotifyManager::new()
                 .context("failed to initialize inotify manager")

@@ -78,24 +78,21 @@ impl ZfsBackup {
 
 #[async_trait::async_trait]
 impl BackupFindExt for ZfsBackup {
-    async fn exists(
-        config: &Arc<crate::config::Config>,
-        uuid: uuid::Uuid,
-    ) -> Result<bool, anyhow::Error> {
-        let path = Self::get_backup_path(config, uuid);
+    async fn exists(state: &crate::routes::State, uuid: uuid::Uuid) -> Result<bool, anyhow::Error> {
+        let path = Self::get_backup_path(&state.config, uuid);
         Ok(tokio::fs::metadata(&path).await.is_ok())
     }
 
     async fn find(
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Backup>, anyhow::Error> {
-        if Self::exists(config, uuid).await? {
-            let dataset_path = Self::get_dataset_path(config, uuid);
+        if Self::exists(state, uuid).await? {
+            let dataset_path = Self::get_dataset_path(&state.config, uuid);
             let dataset = tokio::fs::read_to_string(&dataset_path).await?;
             let server_uuid = dataset
                 .split_once("server-")
-                .map(|(_, uuid)| uuid::Uuid::parse_str(uuid))
+                .map(|(_, uuid)| uuid::Uuid::parse_str(uuid.trim()))
                 .ok_or_else(|| anyhow::anyhow!("failed to parse dataset name: {}", dataset))??;
 
             Ok(Some(Backup::Zfs(Self { server_uuid, uuid })))
@@ -169,6 +166,9 @@ impl BackupCreateExt for ZfsBackup {
 
             let dataset_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
+            tokio::fs::write(&ignored_path, ignore_raw).await?;
+            tokio::fs::write(backup_path.join("dataset"), &dataset_name).await?;
+
             let output = Command::new("zfs")
                 .arg("snapshot")
                 .arg(format!("{dataset_name}@{snapshot_name}"))
@@ -183,9 +183,6 @@ impl BackupCreateExt for ZfsBackup {
                 ));
             }
 
-            tokio::fs::write(&ignored_path, ignore_raw).await?;
-            tokio::fs::write(backup_path.join("dataset"), &dataset_name).await?;
-
             Ok::<_, anyhow::Error>(dataset_name)
         };
 
@@ -193,7 +190,7 @@ impl BackupCreateExt for ZfsBackup {
 
         Ok(RawServerBackup {
             checksum: dataset_name,
-            checksum_type: "zfs-subvolume".into(),
+            checksum_type: "zfs-snapshot".into(),
             size: total_size,
             files: total_files,
             successful: true,
@@ -213,11 +210,11 @@ impl BackupExt for ZfsBackup {
 
     async fn download(
         &self,
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         archive_format: StreamableArchiveFormat,
         _range: Option<ByteRange>,
     ) -> Result<ApiResponse, anyhow::Error> {
-        let snapshot_path = Self::get_snapshot_path(config, self.server_uuid, self.uuid);
+        let snapshot_path = Self::get_snapshot_path(&state.config, self.server_uuid, self.uuid);
 
         if tokio::fs::metadata(&snapshot_path).await.is_err() {
             return Err(anyhow::anyhow!(
@@ -228,12 +225,12 @@ impl BackupExt for ZfsBackup {
 
         let filesystem = crate::server::filesystem::cap::CapFilesystem::new(snapshot_path).await?;
         let names = filesystem.async_read_dir_all(Path::new("")).await?;
-        let ignore = Self::get_ignore(config, self.uuid).await?;
+        let ignore = Self::get_ignore(&state.config, self.uuid).await?;
 
         let (reader, writer) = tokio::io::simplex(crate::BUFFER_SIZE);
 
         tokio::spawn({
-            let config = Arc::clone(config);
+            let config = Arc::clone(&state.config);
 
             async move {
                 let writer = tokio_util::io::SyncIoBridge::new(writer);
@@ -356,7 +353,7 @@ impl BackupExt for ZfsBackup {
                 .await?
                 .with_is_ignored(ignore.into())
                 .run_multithreaded(
-                    server.app_state.config.system.backups.btrfs.restore_threads,
+                    server.app_state.config.system.backups.zfs.restore_threads,
                     Arc::new({
                         let server = server.clone();
                         let filesystem = filesystem.clone();
@@ -421,27 +418,35 @@ impl BackupExt for ZfsBackup {
         Ok(())
     }
 
-    async fn delete(&self, config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error> {
-        let backup_path = Self::get_backup_path(config, self.uuid);
-        let dataset_path = Self::get_dataset_path(config, self.uuid);
+    async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error> {
+        let backup_path = Self::get_backup_path(&state.config, self.uuid);
+        let dataset_path = Self::get_dataset_path(&state.config, self.uuid);
         let snapshot_name = Self::get_snapshot_name(self.uuid);
 
         if tokio::fs::metadata(&backup_path).await.is_err() {
             return Ok(());
         }
 
+        state
+            .backup_manager
+            .invalidate_cached_browse(self.uuid)
+            .await;
+
         if let Ok(dataset_name) = tokio::fs::read_to_string(dataset_path).await {
             let output = Command::new("zfs")
                 .arg("destroy")
+                .arg("-f")
                 .arg(format!("{}@{}", dataset_name.trim(), snapshot_name))
+                .env("LC_ALL", "C")
                 .output()
                 .await?;
 
-            if !output.status.success() {
-                return Err(anyhow::anyhow!(
-                    "failed to delete zfs snapshot: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            if !output.status.success()
+                && !stderr.contains("could not find any snapshots to destroy")
+            {
+                return Err(anyhow::anyhow!("failed to delete zfs snapshot: {}", stderr));
             }
         }
 
@@ -459,7 +464,7 @@ impl BackupExt for ZfsBackup {
 
         if tokio::fs::metadata(&snapshot_path).await.is_err() {
             return Err(anyhow::anyhow!(
-                "zfs backup subvolume does not exist: {}",
+                "zfs backup snapshot does not exist: {}",
                 snapshot_path.display()
             ));
         }
@@ -489,15 +494,18 @@ impl BackupCleanExt for ZfsBackup {
         if let Ok(dataset_name) = tokio::fs::read_to_string(dataset_path).await {
             let output = Command::new("zfs")
                 .arg("destroy")
+                .arg("-f")
                 .arg(format!("{}@{}", dataset_name.trim(), snapshot_name))
+                .env("LC_ALL", "C")
                 .output()
                 .await?;
 
-            if !output.status.success() {
-                return Err(anyhow::anyhow!(
-                    "failed to delete zfs snapshot: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            if !output.status.success()
+                && !stderr.contains("could not find any snapshots to destroy")
+            {
+                return Err(anyhow::anyhow!("failed to delete zfs snapshot: {}", stderr));
             }
         }
 

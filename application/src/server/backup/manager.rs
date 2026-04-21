@@ -10,17 +10,15 @@ use std::sync::{
 };
 
 pub struct BackupManager {
-    config: Arc<crate::config::Config>,
     cached_backups: moka::future::Cache<uuid::Uuid, Arc<super::Backup>>,
     cached_browse_backups: moka::future::Cache<uuid::Uuid, Arc<dyn VirtualReadableFilesystem>>,
     cached_browse_backup_locks: moka::future::Cache<uuid::Uuid, Arc<tokio::sync::Mutex<()>>>,
     cached_backup_adapters: moka::future::Cache<uuid::Uuid, BackupAdapter>,
 }
 
-impl BackupManager {
-    pub fn new(config: Arc<crate::config::Config>) -> Self {
+impl Default for BackupManager {
+    fn default() -> Self {
         Self {
-            config,
             cached_backups: moka::future::CacheBuilder::new(128)
                 .time_to_live(std::time::Duration::from_mins(10))
                 .build(),
@@ -31,15 +29,17 @@ impl BackupManager {
             cached_browse_backup_locks: moka::future::Cache::new(10240),
         }
     }
+}
 
+impl BackupManager {
     pub async fn fast_contains(&self, server: &crate::server::Server, uuid: uuid::Uuid) -> bool {
         self.cached_backups.contains_key(&uuid)
             || server.configuration.read().await.backups.contains(&uuid)
     }
 
-    pub async fn adapter_contains(&self, uuid: uuid::Uuid) -> bool {
+    pub async fn adapter_contains(&self, state: &crate::routes::State, uuid: uuid::Uuid) -> bool {
         if let Some(adapter) = self.cached_backup_adapters.get(&uuid).await {
-            match adapter.exists(&self.config, uuid).await {
+            match adapter.exists(state, uuid).await {
                 Ok(exists) => exists,
                 Err(err) => {
                     tracing::error!(adapter = ?adapter, "failed to check if backup {} exists: {:#?}", uuid, err);
@@ -47,7 +47,7 @@ impl BackupManager {
                 }
             }
         } else {
-            match BackupAdapter::exists_any(&self.config, uuid).await {
+            match BackupAdapter::exists_any(state, uuid).await {
                 Ok(exists) => exists,
                 Err(err) => {
                     tracing::error!("failed to check if backup {} exists: {:#?}", uuid, err);
@@ -403,6 +403,7 @@ impl BackupManager {
 
     pub async fn find(
         &self,
+        state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Arc<super::Backup>>, anyhow::Error> {
         if let Some(backup) = self.cached_backups.get(&uuid).await {
@@ -410,7 +411,7 @@ impl BackupManager {
         }
 
         if let Some(adapter) = self.cached_backup_adapters.get(&uuid).await
-            && let Some(backup) = adapter.find(&self.config, uuid).await?
+            && let Some(backup) = adapter.find(state, uuid).await?
         {
             let backup = Arc::new(backup);
             self.cached_backups.insert(uuid, Arc::clone(&backup)).await;
@@ -418,7 +419,7 @@ impl BackupManager {
             return Ok(Some(backup));
         }
 
-        if let Some((adapter, backup)) = BackupAdapter::find_all(&self.config, uuid).await? {
+        if let Some((adapter, backup)) = BackupAdapter::find_all(state, uuid).await? {
             let backup = Arc::new(backup);
             self.cached_backups.insert(uuid, Arc::clone(&backup)).await;
             self.cached_backup_adapters.insert(uuid, adapter).await;
@@ -431,6 +432,7 @@ impl BackupManager {
 
     pub async fn find_adapter(
         &self,
+        state: &crate::routes::State,
         adapter: BackupAdapter,
         uuid: uuid::Uuid,
     ) -> Result<Option<Arc<super::Backup>>, anyhow::Error> {
@@ -438,7 +440,7 @@ impl BackupManager {
             return Ok(Some(backup));
         }
 
-        if let Some(backup) = adapter.find(&self.config, uuid).await? {
+        if let Some(backup) = adapter.find(state, uuid).await? {
             let backup = Arc::new(backup);
             self.cached_backups.insert(uuid, Arc::clone(&backup)).await;
 
@@ -457,7 +459,7 @@ impl BackupManager {
             return Ok(Some(browse_backup));
         }
 
-        if let Some(backup) = self.find(uuid).await? {
+        if let Some(backup) = self.find(&server.app_state, uuid).await? {
             let server = server.clone();
             let cached_browse_backup_locks = self.cached_browse_backup_locks.clone();
             let cached_browse_backups = self.cached_browse_backups.clone();
@@ -491,5 +493,10 @@ impl BackupManager {
         }
 
         Ok(None)
+    }
+
+    pub async fn invalidate_cached_browse(&self, uuid: uuid::Uuid) {
+        self.cached_browse_backups.invalidate(&uuid).await;
+        self.cached_browse_backup_locks.invalidate(&uuid).await;
     }
 }

@@ -196,21 +196,18 @@ impl DdupBakBackup {
 
 #[async_trait::async_trait]
 impl BackupFindExt for DdupBakBackup {
-    async fn exists(
-        config: &Arc<crate::config::Config>,
-        uuid: uuid::Uuid,
-    ) -> Result<bool, anyhow::Error> {
-        let repository = get_repository(config).await?;
+    async fn exists(state: &crate::routes::State, uuid: uuid::Uuid) -> Result<bool, anyhow::Error> {
+        let repository = get_repository(&state.config).await?;
         let path = repository.archive_path(&uuid.to_string());
 
         Ok(tokio::fs::metadata(&path).await.is_ok())
     }
 
     async fn find(
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Backup>, anyhow::Error> {
-        let repository = get_repository(config).await?;
+        let repository = get_repository(&state.config).await?;
 
         if let Ok(archive) =
             tokio::task::spawn_blocking(move || repository.get_archive(&uuid.to_string())).await?
@@ -401,14 +398,14 @@ impl BackupExt for DdupBakBackup {
 
     async fn download(
         &self,
-        config: &Arc<crate::config::Config>,
+        state: &crate::routes::State,
         archive_format: StreamableArchiveFormat,
         _range: Option<ByteRange>,
     ) -> Result<ApiResponse, anyhow::Error> {
-        let repository = get_repository(config).await?;
+        let repository = get_repository(&state.config).await?;
 
         let archive = self.archive.clone();
-        let compression_level = config.system.backups.compression_level;
+        let compression_level = state.config.system.backups.compression_level;
         let (reader, writer) = tokio::io::simplex(crate::BUFFER_SIZE);
 
         match archive_format {
@@ -439,7 +436,7 @@ impl BackupExt for DdupBakBackup {
                     tokio_util::io::SyncIoBridge::new(writer),
                     archive_format.compression_format(),
                     compression_level,
-                    config.api.file_compression_threads,
+                    state.config.api.file_compression_threads,
                 )?;
 
                 crate::spawn_blocking_handled(move || -> Result<(), anyhow::Error> {
@@ -584,8 +581,8 @@ impl BackupExt for DdupBakBackup {
         Ok(())
     }
 
-    async fn delete(&self, config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error> {
-        let repository = get_repository(config).await?;
+    async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error> {
+        let repository = get_repository(&state.config).await?;
 
         let uuid = self.uuid;
         tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {

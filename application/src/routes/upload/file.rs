@@ -196,10 +196,12 @@ mod post {
 
             while let Some(chunk) = field.chunk().await? {
                 if crate::unlikely(
-                    written_size + chunk.len() as u64 > state.config.api.upload_limit.as_bytes(),
+                    state.config.api.upload_limit.as_bytes() != 0
+                        && written_size + chunk.len() as u64
+                            > state.config.api.upload_limit.as_bytes(),
                 ) {
                     return ApiResponse::error(&format!(
-                        "file size is larger than {}MB",
+                        "file size is larger than {}MiB",
                         state.config.api.upload_limit.as_mib()
                     ))
                     .with_status(StatusCode::EXPECTATION_FAILED)

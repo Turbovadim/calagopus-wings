@@ -137,16 +137,13 @@ impl S3Backup {
 
 #[async_trait::async_trait]
 impl BackupFindExt for S3Backup {
-    async fn exists(
-        config: &Arc<crate::config::Config>,
-        uuid: uuid::Uuid,
-    ) -> Result<bool, anyhow::Error> {
-        let path = Self::get_file_name(config, uuid);
+    async fn exists(state: &crate::routes::State, uuid: uuid::Uuid) -> Result<bool, anyhow::Error> {
+        let path = Self::get_file_name(&state.config, uuid);
         Ok(tokio::fs::metadata(&path).await.is_ok())
     }
 
     async fn find(
-        _config: &Arc<crate::config::Config>,
+        _state: &crate::routes::State,
         uuid: uuid::Uuid,
     ) -> Result<Option<Backup>, anyhow::Error> {
         Ok(Some(Backup::S3(S3Backup { uuid })))
@@ -389,7 +386,7 @@ impl BackupExt for S3Backup {
 
     async fn download(
         &self,
-        _config: &Arc<crate::config::Config>,
+        _state: &crate::routes::State,
         _archive_format: StreamableArchiveFormat,
         _range: Option<ByteRange>,
     ) -> Result<crate::response::ApiResponse, anyhow::Error> {
@@ -529,8 +526,8 @@ impl BackupExt for S3Backup {
         Ok(())
     }
 
-    async fn delete(&self, config: &Arc<crate::config::Config>) -> Result<(), anyhow::Error> {
-        let file_name = Self::get_file_name(config, self.uuid);
+    async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error> {
+        let file_name = Self::get_file_name(&state.config, self.uuid);
         if tokio::fs::metadata(&file_name).await.is_ok() {
             tokio::fs::remove_file(&file_name).await?;
         }
