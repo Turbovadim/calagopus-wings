@@ -808,7 +808,7 @@ impl BackupExt for ResticBackup {
         Ok(())
     }
 
-    async fn delete(&self, _state: &crate::routes::State) -> Result<(), anyhow::Error> {
+    async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error> {
         let output = Command::new("restic")
             .envs(&self.configuration.environment)
             .arg("--repo")
@@ -835,6 +835,11 @@ impl BackupExt for ResticBackup {
 
         let mut cache = RESTIC_BACKUP_CACHE.write().await;
         cache.remove(&self.uuid);
+
+        state
+            .backup_manager
+            .invalidate_cached_browse(self.uuid)
+            .await;
 
         Ok(())
     }

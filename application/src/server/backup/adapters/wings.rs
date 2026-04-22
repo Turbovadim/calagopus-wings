@@ -769,8 +769,13 @@ impl BackupExt for WingsBackup {
         Ok(())
     }
 
-    async fn delete(&self, _state: &crate::routes::State) -> Result<(), anyhow::Error> {
+    async fn delete(&self, state: &crate::routes::State) -> Result<(), anyhow::Error> {
         tokio::fs::remove_file(&self.path).await?;
+
+        state
+            .backup_manager
+            .invalidate_cached_browse(self.uuid)
+            .await;
 
         Ok(())
     }

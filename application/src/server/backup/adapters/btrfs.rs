@@ -484,6 +484,11 @@ impl BackupExt for BtrfsBackup {
             ));
         }
 
+        state
+            .backup_manager
+            .invalidate_cached_browse(self.uuid)
+            .await;
+
         Ok(())
     }
 

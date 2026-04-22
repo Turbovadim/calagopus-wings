@@ -320,7 +320,7 @@ async fn main() {
         .with_state(state.clone());
 
     let (mut router, mut openapi) = app.split_for_parts();
-    openapi.info.version = state.version.clone();
+    openapi.info.version = "1.0.0".into();
     openapi.info.description = None;
     openapi.info.title = format!("{} Wings API", config.app_name);
     openapi.info.contact = None;
@@ -434,9 +434,7 @@ async fn main() {
                 };
 
                 let config = russh::server::Config {
-                    server_id: russh::SshId::Standard(
-                        format!("SSH-2.0-Calagopus-Wings-{}", wings_rs::VERSION).into(),
-                    ),
+                    server_id: russh::SshId::Standard("SSH-2.0-Calagopus-Wings".into()),
                     auth_rejection_time: std::time::Duration::from_secs(0),
                     auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
                     maximum_packet_size: 32 * 1024,

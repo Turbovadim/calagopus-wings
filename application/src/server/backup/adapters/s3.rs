@@ -532,6 +532,11 @@ impl BackupExt for S3Backup {
             tokio::fs::remove_file(&file_name).await?;
         }
 
+        state
+            .backup_manager
+            .invalidate_cached_browse(self.uuid)
+            .await;
+
         Ok(())
     }
 

@@ -593,6 +593,11 @@ impl BackupExt for DdupBakBackup {
         })
         .await??;
 
+        state
+            .backup_manager
+            .invalidate_cached_browse(self.uuid)
+            .await;
+
         Ok(())
     }
 
