@@ -503,5 +503,8 @@ impl BackupManager {
         {
             tracing::error!(backup = %uuid, "failed to close cached browse backup: {:#?}", err);
         }
+
+        self.cached_browse_backups.run_pending_tasks().await;
+        self.cached_browse_backup_locks.run_pending_tasks().await;
     }
 }
