@@ -123,6 +123,12 @@ impl From<i64> for SpaceDelta {
     }
 }
 
+/// A BTree-ish structure to track disk usage for directories (and files). Each node represents a directory, with `space` tracking the total space used by that directory and its children,
+/// if the directory usage itself is required, simply aggregate all entries, and subtract them from self.space, the remaining will be the directory usage itself. The entries are stored in a sorted vector for efficient lookups and insertions.
+///
+/// # Importantly,
+/// This structure is not supposed to store file sizes, but rather directory sizes. The `space` field of each node should represent the total size of all files in that directory and its subdirectories, while the entries represent the subdirectories.
+/// This allows for efficient updates and queries of directory sizes without needing to store individual file sizes.
 #[derive(Debug, Default)]
 pub struct DiskUsage {
     pub space: UsedSpace,
@@ -141,7 +147,7 @@ impl DiskUsage {
         }
     }
 
-    fn get_entry(&mut self, key: &str) -> Option<&mut DiskUsage> {
+    fn get_mut_entry(&mut self, key: &str) -> Option<&mut DiskUsage> {
         if let Ok(idx) = self.entries.binary_search_by(|a| a.0.as_str().cmp(key)) {
             Some(&mut self.entries[idx].1)
         } else {
@@ -178,6 +184,24 @@ impl DiskUsage {
         }
 
         Some(current.space)
+    }
+
+    pub fn get_path(&self, path: &Path) -> Option<&DiskUsage> {
+        if crate::unlikely(path == Path::new("") || path == Path::new("/")) {
+            return Some(self);
+        }
+
+        let mut current = self;
+        for component in path.components() {
+            let name = component.as_os_str().to_str()?;
+            let idx = current
+                .entries
+                .binary_search_by(|(n, _)| n.as_str().cmp(name))
+                .ok()?;
+            current = &current.entries[idx].1;
+        }
+
+        Some(current)
     }
 
     pub fn update_size(&mut self, path: &Path, delta: SpaceDelta) {
@@ -281,7 +305,7 @@ impl DiskUsage {
             return Some(removed);
         }
 
-        if let Some(child) = self.get_entry(name)
+        if let Some(child) = self.get_mut_entry(name)
             && let Some(removed) = child.recursive_remove(components)
         {
             self.space.sub_logical(removed.space.get_logical());

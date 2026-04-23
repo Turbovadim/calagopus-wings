@@ -11,7 +11,6 @@ use crate::{
         },
         cap::FileType,
         encode_mode,
-        usage::UsedSpace,
         virtualfs::{
             AsyncFileRead, AsyncReadableFileStream, ByteRange, DirectoryListing,
             DirectoryStreamWalk, DirectoryWalk, FileMetadata, FileRead, IsIgnoredFn,
@@ -112,7 +111,7 @@ pub struct VirtualZipArchive {
     pub archive: zip::ZipArchive<MultiReader>,
     pub archive_created: chrono::DateTime<chrono::Utc>,
     pub mime_cache: moka::sync::Cache<usize, MimeCacheValue>,
-    pub sizes: Arc<Vec<(UsedSpace, PathBuf)>>,
+    pub sizes: Arc<crate::server::filesystem::usage::DiskUsage>,
 }
 
 impl VirtualZipArchive {
@@ -121,26 +120,27 @@ impl VirtualZipArchive {
         mut archive: zip::ZipArchive<MultiReader>,
         archive_created: chrono::DateTime<chrono::Utc>,
     ) -> Self {
-        let names = archive
-            .file_names()
-            .map(|name| name.to_string())
-            .collect::<Vec<_>>();
-        let mut sizes = names
-            .into_iter()
-            .map(|name| {
-                (
-                    {
-                        let entry = archive.by_name(&name);
+        use crate::server::filesystem::usage::{DiskUsage, SpaceDelta};
 
-                        entry
-                            .map(|e| UsedSpace::new(e.size(), e.compressed_size()))
-                            .unwrap_or_default()
-                    },
-                    PathBuf::from(name),
-                )
-            })
-            .collect::<Vec<_>>();
-        sizes.shrink_to_fit();
+        let mut sizes = DiskUsage::default();
+
+        for i in 0..archive.len() {
+            let Ok(entry) = archive.by_index(i) else {
+                continue;
+            };
+            let Some(name) = entry.enclosed_name() else {
+                continue;
+            };
+
+            if entry.is_dir() {
+                let delta = SpaceDelta::new(entry.size() as i64, entry.compressed_size() as i64);
+                sizes.update_size(&name, delta);
+            } else {
+                let parent = name.parent().unwrap_or(Path::new(""));
+                let delta = SpaceDelta::new(entry.size() as i64, entry.compressed_size() as i64);
+                sizes.update_size(parent, delta);
+            }
+        }
 
         Self {
             server,
@@ -182,22 +182,55 @@ impl VirtualZipArchive {
         ))
     }
 
+    fn is_virtual_directory(
+        sizes: &crate::server::filesystem::usage::DiskUsage,
+        path: &Path,
+    ) -> bool {
+        sizes.get_path(path).is_some()
+    }
+
+    fn virtual_directory_entry(
+        archive_created: &chrono::DateTime<chrono::Utc>,
+        path: &Path,
+        sizes: &crate::server::filesystem::usage::DiskUsage,
+    ) -> DirectoryEntry {
+        let space = sizes.get_size(path).unwrap_or_default();
+
+        let detected_mime = MimeCacheValue::directory();
+        let mode: u32 = 0o755;
+
+        DirectoryEntry {
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into(),
+            mode: encode_mode(mode),
+            mode_bits: compact_str::format_compact!("{:o}", mode & 0o777),
+            size: space.get_logical(),
+            size_physical: space.get_physical(),
+            editable: false,
+            inner_editable: false,
+            directory: true,
+            file: false,
+            symlink: false,
+            mime: detected_mime.mime,
+            modified: Default::default(),
+            created: *archive_created,
+        }
+    }
+
     fn zip_entry_to_directory_entry(
         archive_created: &chrono::DateTime<chrono::Utc>,
         path: &Path,
         entry_index: usize,
         mime_cache: &moka::sync::Cache<usize, MimeCacheValue>,
-        sizes: &[(UsedSpace, PathBuf)],
+        sizes: &crate::server::filesystem::usage::DiskUsage,
         buffer: Option<&[u8]>,
         mut entry: zip::read::ZipFile<impl Read + Seek>,
     ) -> DirectoryEntry {
         let (size, size_physical) = if entry.is_dir() {
-            let space: UsedSpace = sizes
-                .iter()
-                .filter(|(_, name)| name.starts_with(path))
-                .map(|(size, _)| *size)
-                .sum();
-
+            let space = sizes.get_size(path).unwrap_or_default();
             (space.get_logical(), space.get_physical())
         } else {
             (entry.size(), entry.compressed_size())
@@ -277,7 +310,9 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         &self,
         path: &(dyn AsRef<Path> + Send + Sync),
     ) -> Result<FileMetadata, anyhow::Error> {
-        if path.as_ref() == Path::new("") || path.as_ref() == Path::new("/") {
+        let path_ref = path.as_ref();
+
+        if path_ref == Path::new("") || path_ref == Path::new("/") {
             return Ok(FileMetadata {
                 file_type: FileType::Dir,
                 permissions: PortablePermissions::from_mode(0o755),
@@ -288,25 +323,37 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         }
 
         let mut archive = self.archive.clone();
-        let path = path.as_ref();
 
-        let entry = archive.better_by_path(path)?;
-
-        Ok(FileMetadata {
-            file_type: Self::zip_entry_to_file_type(&entry),
-            permissions: if let Some(mode) = entry.unix_mode() {
-                PortablePermissions::from_mode(mode & 0o777)
-            } else if entry.is_dir() {
-                PortablePermissions::from_mode(0o755)
-            } else {
-                PortablePermissions::from_mode(0o644)
-            },
-            size: entry.size(),
-            modified: crate::server::filesystem::archive::zip_entry_get_modified_time(&entry)
-                .map(|dt| dt.into_std()),
-            created: crate::server::filesystem::archive::zip_entry_get_created_time(&entry)
-                .map(|dt| dt.into_std()),
-        })
+        match archive.better_by_path(path_ref) {
+            Ok(entry) => Ok(FileMetadata {
+                file_type: Self::zip_entry_to_file_type(&entry),
+                permissions: if let Some(mode) = entry.unix_mode() {
+                    PortablePermissions::from_mode(mode & 0o777)
+                } else if entry.is_dir() {
+                    PortablePermissions::from_mode(0o755)
+                } else {
+                    PortablePermissions::from_mode(0o644)
+                },
+                size: entry.size(),
+                modified: crate::server::filesystem::archive::zip_entry_get_modified_time(&entry)
+                    .map(|dt| dt.into_std()),
+                created: crate::server::filesystem::archive::zip_entry_get_created_time(&entry)
+                    .map(|dt| dt.into_std()),
+            }),
+            Err(e) => {
+                if Self::is_virtual_directory(&self.sizes, path_ref) {
+                    Ok(FileMetadata {
+                        file_type: FileType::Dir,
+                        permissions: PortablePermissions::from_mode(0o755),
+                        size: 0,
+                        modified: None,
+                        created: None,
+                    })
+                } else {
+                    Err(e.into())
+                }
+            }
+        }
     }
     async fn async_metadata(
         &self,
@@ -338,21 +385,28 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         let sizes = self.sizes.clone();
         let path = path.as_ref().to_path_buf();
 
-        let entry = tokio::task::spawn_blocking(move || {
-            let entry_index = archive.better_index_for_path(&path).unwrap_or(usize::MAX);
-            let entry = archive.by_index(entry_index)?;
-
-            Ok::<_, zip::result::ZipError>(Self::zip_entry_to_directory_entry(
-                &archive_created,
-                &path,
-                entry_index,
-                &mime_cache,
-                &sizes,
-                None,
-                entry,
-            ))
-        })
-        .await??;
+        let entry =
+            tokio::task::spawn_blocking(move || -> Result<DirectoryEntry, anyhow::Error> {
+                match archive.better_index_for_path(&path) {
+                    Some(entry_index) => {
+                        let entry = archive.by_index(entry_index)?;
+                        Ok(Self::zip_entry_to_directory_entry(
+                            &archive_created,
+                            &path,
+                            entry_index,
+                            &mime_cache,
+                            &sizes,
+                            None,
+                            entry,
+                        ))
+                    }
+                    None if Self::is_virtual_directory(&sizes, &path) => Ok(
+                        Self::virtual_directory_entry(&archive_created, &path, &sizes),
+                    ),
+                    None => Err(zip::result::ZipError::FileNotFound.into()),
+                }
+            })
+            .await??;
 
         Ok(entry)
     }
@@ -369,21 +423,28 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
         let path = path.as_ref().to_path_buf();
         let buffer = buffer.to_owned();
 
-        let entry = tokio::task::spawn_blocking(move || {
-            let entry_index = archive.better_index_for_path(&path).unwrap_or(usize::MAX);
-            let entry = archive.by_index(entry_index)?;
-
-            Ok::<_, zip::result::ZipError>(Self::zip_entry_to_directory_entry(
-                &archive_created,
-                &path,
-                entry_index,
-                &mime_cache,
-                &sizes,
-                Some(&buffer),
-                entry,
-            ))
-        })
-        .await??;
+        let entry =
+            tokio::task::spawn_blocking(move || -> Result<DirectoryEntry, anyhow::Error> {
+                match archive.better_index_for_path(&path) {
+                    Some(entry_index) => {
+                        let entry = archive.by_index(entry_index)?;
+                        Ok(Self::zip_entry_to_directory_entry(
+                            &archive_created,
+                            &path,
+                            entry_index,
+                            &mime_cache,
+                            &sizes,
+                            Some(&buffer),
+                            entry,
+                        ))
+                    }
+                    None if Self::is_virtual_directory(&sizes, &path) => Ok(
+                        Self::virtual_directory_entry(&archive_created, &path, &sizes),
+                    ),
+                    None => Err(zip::result::ZipError::FileNotFound.into()),
+                }
+            })
+            .await??;
 
         Ok(entry)
     }
@@ -404,38 +465,76 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
 
         let entries =
             tokio::task::spawn_blocking(move || -> Result<DirectoryListing, anyhow::Error> {
-                let mut directory_entries = Vec::new();
-                let mut other_entries = Vec::new();
+                let mut directory_entries: Vec<(Option<usize>, SortableZipEntry)> = Vec::new();
+                let mut other_entries: Vec<(usize, SortableZipEntry)> = Vec::new();
+
+                if let Some(node) = sizes.get_path(&path) {
+                    for (child_name, child_node) in node.get_entries() {
+                        let child_path = path.join(child_name.as_str());
+                        let zip_index = archive.better_index_for_path(&child_path);
+
+                        let (modified, created) = if let Some(idx) = zip_index {
+                            let entry = archive.by_index(idx)?;
+                            let m =
+                                crate::server::filesystem::archive::zip_entry_get_modified_time(
+                                    &entry,
+                                )
+                                .map(|dt| dt.into_std().into())
+                                .unwrap_or_default();
+                            let c = crate::server::filesystem::archive::zip_entry_get_created_time(
+                                &entry,
+                            )
+                            .map(|dt| dt.into_std().into())
+                            .unwrap_or(archive_created);
+                            (m, c)
+                        } else {
+                            (archive_created, archive_created)
+                        };
+
+                        let Some(filtered_name) = (is_ignored)(FileType::Dir, child_path) else {
+                            continue;
+                        };
+
+                        directory_entries.push((
+                            zip_index,
+                            SortableZipEntry {
+                                name: filtered_name,
+                                size: child_node.space.get_logical(),
+                                size_compressed: child_node.space.get_physical(),
+                                modified,
+                                created,
+                            },
+                        ));
+                    }
+                }
 
                 let path_len = path.components().count();
                 for i in 0..archive.len() {
                     let entry = archive.by_index(i)?;
+                    if entry.is_dir() {
+                        continue;
+                    }
                     let name = match entry.enclosed_name() {
                         Some(name) => name,
                         None => continue,
                     };
 
-                    let name_len = name.components().count();
-                    if name_len < path_len
-                        || !name.starts_with(&path)
-                        || name == path
-                        || name_len > path_len + 1
-                    {
+                    if !name.starts_with(&path) || name == path {
+                        continue;
+                    }
+                    if name.components().count() != path_len + 1 {
                         continue;
                     }
 
-                    let Some(name) = (is_ignored)(Self::zip_entry_to_file_type(&entry), name)
-                    else {
+                    let file_type = Self::zip_entry_to_file_type(&entry);
+                    let Some(filtered_name) = (is_ignored)(file_type, name) else {
                         continue;
                     };
 
-                    if entry.is_dir() {
-                        directory_entries
-                            .push((i, SortableZipEntry::new(name, &entry, &archive_created)));
-                    } else {
-                        other_entries
-                            .push((i, SortableZipEntry::new(name, &entry, &archive_created)));
-                    }
+                    other_entries.push((
+                        i,
+                        SortableZipEntry::new(filtered_name, &entry, &archive_created),
+                    ));
                 }
 
                 directory_entries.sort_unstable_by(|a, b| a.1.cmp_sort(&b.1, sort));
@@ -444,48 +543,67 @@ impl VirtualReadableFilesystem for VirtualZipArchive {
                 let total_entries = directory_entries.len() + other_entries.len();
                 let mut entries = Vec::new();
 
+                let merged = directory_entries
+                    .into_iter()
+                    .chain(other_entries.into_iter().map(|(i, s)| (Some(i), s)));
+
                 if let Some(per_page) = per_page {
                     let start = (page - 1) * per_page;
 
-                    for (entry_index, _) in directory_entries
-                        .into_iter()
-                        .chain(other_entries)
-                        .skip(start)
-                        .take(per_page)
-                    {
-                        let entry = archive.by_index(entry_index)?;
-                        let entry_path = match entry.enclosed_name() {
-                            Some(name) => name,
-                            None => continue,
-                        };
-
-                        entries.push(Self::zip_entry_to_directory_entry(
-                            &archive_created,
-                            &entry_path,
-                            entry_index,
-                            &mime_cache,
-                            &sizes,
-                            None,
-                            entry,
-                        ));
+                    for (zip_index, sortable) in merged.skip(start).take(per_page) {
+                        match zip_index {
+                            Some(idx) => {
+                                let entry = archive.by_index(idx)?;
+                                let entry_path = match entry.enclosed_name() {
+                                    Some(name) => name,
+                                    None => continue,
+                                };
+                                entries.push(Self::zip_entry_to_directory_entry(
+                                    &archive_created,
+                                    &entry_path,
+                                    idx,
+                                    &mime_cache,
+                                    &sizes,
+                                    None,
+                                    entry,
+                                ));
+                            }
+                            None => {
+                                entries.push(Self::virtual_directory_entry(
+                                    &archive_created,
+                                    &sortable.name,
+                                    &sizes,
+                                ));
+                            }
+                        }
                     }
                 } else {
-                    for (entry_index, _) in directory_entries.into_iter().chain(other_entries) {
-                        let entry = archive.by_index(entry_index)?;
-                        let entry_path = match entry.enclosed_name() {
-                            Some(name) => name,
-                            None => continue,
-                        };
-
-                        entries.push(Self::zip_entry_to_directory_entry(
-                            &archive_created,
-                            &entry_path,
-                            entry_index,
-                            &mime_cache,
-                            &sizes,
-                            None,
-                            entry,
-                        ));
+                    for (zip_index, sortable) in merged {
+                        match zip_index {
+                            Some(idx) => {
+                                let entry = archive.by_index(idx)?;
+                                let entry_path = match entry.enclosed_name() {
+                                    Some(name) => name,
+                                    None => continue,
+                                };
+                                entries.push(Self::zip_entry_to_directory_entry(
+                                    &archive_created,
+                                    &entry_path,
+                                    idx,
+                                    &mime_cache,
+                                    &sizes,
+                                    None,
+                                    entry,
+                                ));
+                            }
+                            None => {
+                                entries.push(Self::virtual_directory_entry(
+                                    &archive_created,
+                                    &sortable.name,
+                                    &sizes,
+                                ));
+                            }
+                        }
                     }
                 }
 
