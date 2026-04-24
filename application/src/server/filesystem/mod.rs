@@ -334,6 +334,7 @@ impl Filesystem {
 
                         if !disk_checker_state_dirty.swap(false, Ordering::Relaxed) {
                             tracing::debug!(
+                                path = %cap_filesystem.base_path.display(),
                                 "skipping disk usage check due to server state inactivity"
                             );
                         } else {
