@@ -86,7 +86,7 @@ impl SftpSession {
         #[cfg(unix)]
         {
             match rustix::fs::FileType::from_raw_mode(
-                PortablePermissions::from(metadata.permissions()).mode,
+                PortablePermissions::from(metadata.permissions()).mode as u16,
             ) {
                 rustix::fs::FileType::RegularFile => attrs.set_regular(true),
                 rustix::fs::FileType::Directory => attrs.set_dir(true),
@@ -99,7 +99,7 @@ impl SftpSession {
 
             if let Some(target_metadata) = target_metadata {
                 match rustix::fs::FileType::from_raw_mode(
-                    PortablePermissions::from(target_metadata.permissions()).mode,
+                    PortablePermissions::from(target_metadata.permissions()).mode as u16,
                 ) {
                     rustix::fs::FileType::RegularFile => attrs.set_regular(true),
                     rustix::fs::FileType::Directory => attrs.set_dir(true),

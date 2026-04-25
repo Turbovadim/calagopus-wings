@@ -39,7 +39,7 @@ pub fn encode_mode(mode: u32) -> compact_str::CompactString {
     let mut mode_str = compact_str::CompactString::default();
 
     #[cfg(unix)]
-    mode_str.push(match rustix::fs::FileType::from_raw_mode(mode) {
+    mode_str.push(match rustix::fs::FileType::from_raw_mode(mode as u16) {
         rustix::fs::FileType::RegularFile => '-',
         rustix::fs::FileType::Directory => 'd',
         rustix::fs::FileType::Symlink => 'l',
