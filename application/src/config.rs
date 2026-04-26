@@ -1154,7 +1154,7 @@ impl Config {
 
         // Do not allow directory paths with less than 1 segment (e.g. "/")
         const MIN_DIRECTORY_SEGMENTS: usize = 1;
-        let directories = vec![
+        let directories = &[
             (&self.system.root_directory, "root_directory"),
             (&self.system.log_directory, "log_directory"),
             (&self.system.vmount_directory, "vmount_directory"),
