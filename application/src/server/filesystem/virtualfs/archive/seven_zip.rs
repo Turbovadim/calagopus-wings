@@ -3,12 +3,13 @@ use crate::{
         compression::{CompressionLevel, writer::CompressionWriter},
         counting_reader::CountingReader,
     },
-    models::DirectoryEntry,
+    models::{DirectoryEntry, DirectorySortingMode},
     routes::MimeCacheValue,
     server::filesystem::{
         archive::{StreamableArchiveFormat, multi_reader::MultiReader},
         cap::FileType,
         encode_mode,
+        usage::SpaceDelta,
         virtualfs::{
             AsyncFileRead, AsyncReadableFileStream, ByteRange, DirectoryListing,
             DirectoryStreamWalk, DirectoryWalk, FileMetadata, FileRead, IsIgnoredFn,
@@ -77,9 +78,7 @@ impl VirtualSevenZipArchive {
         archive_created: chrono::DateTime<chrono::Utc>,
         reader: MultiReader,
     ) -> Self {
-        use crate::server::filesystem::usage::{DiskUsage, SpaceDelta};
-
-        let mut sizes = DiskUsage::default();
+        let mut sizes = crate::server::filesystem::usage::DiskUsage::default();
 
         for entry in archive.files.iter() {
             let name = Path::new(entry.name());
@@ -564,11 +563,35 @@ impl VirtualReadableFilesystem for VirtualSevenZipArchive {
                         _ => unreachable!(),
                     };
 
-                    match (a_real, b_real) {
-                        (Some((_, ae)), Some((_, be))) => ae.cmp_sort(be, sort),
-                        (Some(_), None) => std::cmp::Ordering::Less,
-                        (None, Some(_)) => std::cmp::Ordering::Greater,
-                        (None, None) => a_path.cmp(b_path),
+                    match sort {
+                        DirectorySortingMode::SizeAsc
+                        | DirectorySortingMode::SizeDesc
+                        | DirectorySortingMode::PhysicalSizeAsc
+                        | DirectorySortingMode::PhysicalSizeDesc => {
+                            let a_space = sizes.get_size(a_path).unwrap_or_default();
+                            let b_space = sizes.get_size(b_path).unwrap_or_default();
+                            match sort {
+                                DirectorySortingMode::SizeAsc => {
+                                    a_space.get_logical().cmp(&b_space.get_logical())
+                                }
+                                DirectorySortingMode::SizeDesc => {
+                                    b_space.get_logical().cmp(&a_space.get_logical())
+                                }
+                                DirectorySortingMode::PhysicalSizeAsc => {
+                                    a_space.get_physical().cmp(&b_space.get_physical())
+                                }
+                                DirectorySortingMode::PhysicalSizeDesc => {
+                                    b_space.get_physical().cmp(&a_space.get_physical())
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        _ => match (a_real, b_real) {
+                            (Some((_, ae)), Some((_, be))) => ae.cmp_sort(be, sort),
+                            (Some(_), None) => std::cmp::Ordering::Less,
+                            (None, Some(_)) => std::cmp::Ordering::Greater,
+                            (None, None) => a_path.cmp(b_path),
+                        },
                     }
                 });
                 other_entries.sort_unstable_by(|a, b| a.1.cmp_sort(b.1, sort));

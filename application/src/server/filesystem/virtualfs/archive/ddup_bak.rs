@@ -10,6 +10,7 @@ use crate::{
         archive::StreamableArchiveFormat,
         cap::FileType,
         encode_mode,
+        usage::SpaceDelta,
         virtualfs::{
             AsyncFileRead, AsyncReadableFileStream, ByteRange, DirectoryListing,
             DirectoryStreamWalk, DirectoryWalk, FileMetadata, FileRead, IsIgnoredFn,
@@ -53,6 +54,21 @@ impl EntryReaderExt for Option<Arc<ddup_bak::repository::Repository>> {
     }
 }
 
+fn entry_size_recursive(entry: &Entry) -> (u64, u64) {
+    match entry {
+        Entry::File(file) => (
+            file.size_real,
+            file.size_compressed.unwrap_or(file.size_real),
+        ),
+        Entry::Directory(dir) => dir
+            .entries
+            .iter()
+            .map(entry_size_recursive)
+            .fold((0, 0), |acc, x| (acc.0 + x.0, acc.1 + x.1)),
+        Entry::Symlink(link) => (link.target.len() as u64, link.target.len() as u64),
+    }
+}
+
 pub trait CmpSortExt {
     fn cmp_sort(
         &self,
@@ -69,30 +85,20 @@ impl CmpSortExt for Entry {
     ) -> std::cmp::Ordering {
         use crate::models::DirectorySortingMode::*;
 
-        let size = match self {
-            Entry::File(file) => file.size,
-            _ => 0,
-        };
-        let size_other = match other {
-            Entry::File(file) => file.size,
-            _ => 0,
-        };
-        let size_physical = match self {
-            Entry::File(file) => file.size_compressed.unwrap_or(file.size),
-            _ => 0,
-        };
-        let size_physical_other = match other {
-            Entry::File(file) => file.size_compressed.unwrap_or(file.size),
-            _ => 0,
-        };
-
         match sort {
             NameAsc => self.name().cmp(other.name()),
             NameDesc => other.name().cmp(self.name()),
-            SizeAsc => size.cmp(&size_other),
-            SizeDesc => size_other.cmp(&size),
-            PhysicalSizeAsc => size_physical.cmp(&size_physical_other),
-            PhysicalSizeDesc => size_physical_other.cmp(&size_physical),
+            SizeAsc | SizeDesc | PhysicalSizeAsc | PhysicalSizeDesc => {
+                let (a_log, a_phy) = entry_size_recursive(self);
+                let (b_log, b_phy) = entry_size_recursive(other);
+                match sort {
+                    SizeAsc => a_log.cmp(&b_log),
+                    SizeDesc => b_log.cmp(&a_log),
+                    PhysicalSizeAsc => a_phy.cmp(&b_phy),
+                    PhysicalSizeDesc => b_phy.cmp(&a_phy),
+                    _ => unreachable!(),
+                }
+            }
             ModifiedAsc | CreatedAsc => self.mtime().cmp(&other.mtime()),
             ModifiedDesc | CreatedDesc => other.mtime().cmp(&self.mtime()),
         }
@@ -105,6 +111,63 @@ pub struct VirtualDdupBakArchive {
     pub archive: Arc<ddup_bak::archive::Archive>,
     pub archive_created: chrono::DateTime<chrono::Utc>,
     pub repository: Option<Arc<ddup_bak::repository::Repository>>,
+    pub sizes: Arc<crate::server::filesystem::usage::DiskUsage>,
+}
+
+fn sort_dir_entries_by_size(
+    entries: &mut Vec<&Entry>,
+    sort: crate::models::DirectorySortingMode,
+    sizes: &crate::server::filesystem::usage::DiskUsage,
+    parent_path: &Path,
+) {
+    use crate::models::DirectorySortingMode::*;
+    match sort {
+        SizeAsc | SizeDesc | PhysicalSizeAsc | PhysicalSizeDesc => {
+            entries.sort_unstable_by(|a, b| {
+                let a_space = sizes
+                    .get_size(&parent_path.join(a.name()))
+                    .unwrap_or_default();
+                let b_space = sizes
+                    .get_size(&parent_path.join(b.name()))
+                    .unwrap_or_default();
+                match sort {
+                    SizeAsc => a_space.get_logical().cmp(&b_space.get_logical()),
+                    SizeDesc => b_space.get_logical().cmp(&a_space.get_logical()),
+                    PhysicalSizeAsc => a_space.get_physical().cmp(&b_space.get_physical()),
+                    PhysicalSizeDesc => b_space.get_physical().cmp(&a_space.get_physical()),
+                    _ => unreachable!(),
+                }
+            });
+        }
+        _ => entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort)),
+    }
+}
+
+fn populate_disk_usage(
+    entries: &[Entry],
+    prefix: &Path,
+    sizes: &mut crate::server::filesystem::usage::DiskUsage,
+) {
+    for entry in entries {
+        let entry_path = prefix.join(entry.name());
+        match entry {
+            Entry::File(file) => {
+                let delta = SpaceDelta::new(
+                    file.size_real as i64,
+                    file.size_compressed.unwrap_or(file.size_real) as i64,
+                );
+                sizes.update_size(prefix, delta);
+            }
+            Entry::Directory(dir) => {
+                sizes.update_size(&entry_path, SpaceDelta::new(0, 0));
+                populate_disk_usage(&dir.entries, &entry_path, sizes);
+            }
+            Entry::Symlink(link) => {
+                let len = link.target.len() as i64;
+                sizes.update_size(prefix, SpaceDelta::new(len, len));
+            }
+        }
+    }
 }
 
 impl VirtualDdupBakArchive {
@@ -114,11 +177,15 @@ impl VirtualDdupBakArchive {
         archive_created: chrono::DateTime<chrono::Utc>,
         repository: Option<Arc<ddup_bak::repository::Repository>>,
     ) -> Self {
+        let mut sizes = crate::server::filesystem::usage::DiskUsage::default();
+        populate_disk_usage(archive.entries(), Path::new(""), &mut sizes);
+
         Self {
             server,
             archive,
             archive_created,
             repository,
+            sizes: Arc::new(sizes),
         }
     }
 
@@ -153,38 +220,7 @@ impl VirtualDdupBakArchive {
         path: &Path,
         entry: &ddup_bak::archive::entries::Entry,
     ) -> DirectoryEntry {
-        let (size, size_physical) = match entry {
-            ddup_bak::archive::entries::Entry::File(file) => (
-                file.size_real,
-                file.size_compressed.unwrap_or(file.size_real),
-            ),
-            ddup_bak::archive::entries::Entry::Directory(dir) => {
-                fn recursive_size(entry: &ddup_bak::archive::entries::Entry) -> (u64, u64) {
-                    match entry {
-                        ddup_bak::archive::entries::Entry::File(file) => (
-                            file.size_real,
-                            file.size_compressed.unwrap_or(file.size_real),
-                        ),
-                        ddup_bak::archive::entries::Entry::Directory(dir) => dir
-                            .entries
-                            .iter()
-                            .map(recursive_size)
-                            .fold((0, 0), |acc, x| (acc.0 + x.0, acc.1 + x.1)),
-                        ddup_bak::archive::entries::Entry::Symlink(link) => {
-                            (link.target.len() as u64, link.target.len() as u64)
-                        }
-                    }
-                }
-
-                dir.entries
-                    .iter()
-                    .map(recursive_size)
-                    .fold((0, 0), |acc, x| (acc.0 + x.0, acc.1 + x.1))
-            }
-            ddup_bak::archive::entries::Entry::Symlink(link) => {
-                (link.target.len() as u64, link.target.len() as u64)
-            }
-        };
+        let (size, size_physical) = entry_size_recursive(entry);
 
         let detected_mime = if entry.is_directory() {
             MimeCacheValue::directory()
@@ -479,6 +515,7 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
     ) -> Result<DirectoryListing, anyhow::Error> {
         let archive = self.archive.clone();
         let archive_created = self.archive_created;
+        let sizes = self.sizes.clone();
         let path = path.as_ref().to_path_buf();
 
         let entries =
@@ -515,7 +552,7 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                             }
                         }
 
-                        directory_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
+                        sort_dir_entries_by_size(&mut directory_entries, sort, &sizes, &path);
                         other_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
 
                         let total_entries = directory_entries.len() + other_entries.len();
@@ -582,7 +619,7 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                             }
                         }
 
-                        directory_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
+                        sort_dir_entries_by_size(&mut directory_entries, sort, &sizes, &path);
                         other_entries.sort_unstable_by(|a, b| a.cmp_sort(b, sort));
 
                         let total_entries = directory_entries.len() + other_entries.len();
@@ -597,7 +634,7 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                                 .skip(start)
                                 .take(per_page)
                             {
-                                let path = path.join(&dir.name).join(entry.name());
+                                let path = path.join(entry.name());
                                 entries.push(Self::ddup_bak_entry_to_directory_entry(
                                     &archive_created,
                                     &path,
@@ -606,7 +643,7 @@ impl VirtualReadableFilesystem for VirtualDdupBakArchive {
                             }
                         } else {
                             for entry in directory_entries.into_iter().chain(other_entries) {
-                                let path = path.join(&dir.name).join(entry.name());
+                                let path = path.join(entry.name());
                                 entries.push(Self::ddup_bak_entry_to_directory_entry(
                                     &archive_created,
                                     &path,

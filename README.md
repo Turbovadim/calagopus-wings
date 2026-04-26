@@ -206,7 +206,7 @@ ignore_panel_wings_upgrades: false
 - `GET /api/servers/{server}/logs/install` API endpoint for getting server installation logs
 - `GET /api/servers/{server}/version` API endpoint for getting a version hash for a server
 - `GET /api/servers/{server}/files/fingerprints` API endpoint for getting fingerprints for many files at once
-- `GET /api/servers/{server}/files/list` API endpoint for listing files with pagination
+- `GET /api/servers/{server}/files/list` API endpoint for listing files with pagination and file sorting
 - `POST /api/servers/{server}/files/search` API endpoint for searching for file names/content
 - `GET /api/servers/{server}/download/directory` API endpoint for downloading directories on-the-fly as archives
 
@@ -214,6 +214,7 @@ ignore_panel_wings_upgrades: false
 
 - properly support egg `file_denylist`
 - add support for browsing `.zip`, `.7z`, and `.ddup` archives in the file manager
+- add support for browsing `/home/container/` mounts as virtual directories in the file manager
 - add support for `name` property on `POST /api/servers/{server}/files/copy`
 - add support for opening individual compressed file (e.g. `.log.gz`) in `GET /api/servers/{server}/files/contents`
 - add (real) folder size support on `GET /api/servers/{server}/files/list-directory`
