@@ -343,7 +343,9 @@ impl Filesystem {
                                 == 0
                             {
                                 None
-                            } else if use_server_notifier.load(Ordering::Relaxed) {
+                            } else if use_server_notifier.load(Ordering::Relaxed)
+                                && server_notifier.is_trusted()
+                            {
                                 let paths = server_notifier.take_modified_paths().await;
 
                                 tracing::debug!(

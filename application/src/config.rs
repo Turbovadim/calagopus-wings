@@ -174,7 +174,7 @@ fn system_disk_check_interval() -> u64 {
     150
 }
 fn system_full_disk_check_every() -> u64 {
-    6
+    4
 }
 fn system_disk_check_use_inotify() -> bool {
     true

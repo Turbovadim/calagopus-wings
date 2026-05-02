@@ -695,15 +695,15 @@ impl CapFilesystem {
         let path = self.relative_path(path.as_ref());
 
         if path.components().next().is_none() {
-            if let Some(os) = permissions.into_os() {
-                tokio::fs::set_permissions(&*self.base_path, os).await?;
+            if let Some(permissions) = permissions.into_std_permissions() {
+                tokio::fs::set_permissions(&*self.base_path, permissions).await?;
             }
         } else {
             let inner = self.async_get_inner().await?;
 
-            if let Some(os) = permissions.into_os() {
+            if let Some(permissions) = permissions.into_std_permissions() {
                 tokio::task::spawn_blocking(move || {
-                    inner.set_permissions(path, cap_std::fs::Permissions::from_std(os))
+                    inner.set_permissions(path, cap_std::fs::Permissions::from_std(permissions))
                 })
                 .await??;
             } else {
@@ -726,14 +726,14 @@ impl CapFilesystem {
         let path = self.relative_path(path.as_ref());
 
         if path.components().next().is_none() {
-            if let Some(os) = permissions.into_os() {
-                std::fs::set_permissions(&*self.base_path, os)?;
+            if let Some(permissions) = permissions.into_std_permissions() {
+                std::fs::set_permissions(&*self.base_path, permissions)?;
             }
         } else {
             let inner = self.get_inner()?;
 
-            if let Some(os) = permissions.into_os() {
-                inner.set_permissions(path, cap_std::fs::Permissions::from_std(os))?;
+            if let Some(permissions) = permissions.into_std_permissions() {
+                inner.set_permissions(path, cap_std::fs::Permissions::from_std(permissions))?;
             } else {
                 let file = inner.open(&path)?;
                 file.apply_permissions(permissions)?;
@@ -751,8 +751,8 @@ impl CapFilesystem {
         let path = self.relative_path(path.as_ref());
 
         if path.components().next().is_none() {
-            if let Some(os) = permissions.into_os() {
-                tokio::fs::set_permissions(&*self.base_path, os).await?;
+            if let Some(permissions) = permissions.into_std_permissions() {
+                tokio::fs::set_permissions(&*self.base_path, permissions).await?;
             }
         } else {
             let inner = self.async_get_inner().await?;
@@ -788,8 +788,8 @@ impl CapFilesystem {
         let path = self.relative_path(path.as_ref());
 
         if path.components().next().is_none() {
-            if let Some(os) = permissions.into_os() {
-                std::fs::set_permissions(&*self.base_path, os)?;
+            if let Some(permissions) = permissions.into_std_permissions() {
+                std::fs::set_permissions(&*self.base_path, permissions)?;
             }
         } else {
             #[cfg(unix)]
