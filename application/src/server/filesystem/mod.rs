@@ -426,7 +426,7 @@ impl Filesystem {
 
     #[inline]
     pub fn get_physical_cached_size(&self) -> u64 {
-        self.disk_usage_cached_logical.load(Ordering::Relaxed)
+        self.disk_usage_cached_physical.load(Ordering::Relaxed)
     }
 
     #[inline]
