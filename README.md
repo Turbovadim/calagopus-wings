@@ -55,6 +55,9 @@ system:
   # path for temporary mountpoints for servers
   vmount_directory: /var/lib/pterodactyl/vmounts
 
+  # how many concurrent disk checks to allow for all servers globally, this applies to all disk checks - so also partial checks.
+  # 2 means no more than 2 servers will be checked at any given time
+  disk_check_concurrency: 2
   # how often to do a full disk check when inotify is used, this is to prevent gradual desync between the
   # actual disk usage and the inotify events. 6 means that a full disk check will be done every 6 inotify disk checks.
   # so, if disk_check_interval is 150 seconds, then a full disk check will be done every 900 seconds (15 minutes)

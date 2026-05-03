@@ -142,6 +142,12 @@ impl Filesystem {
                     let mut full_disk_check_counter = 0;
 
                     loop {
+                        let permit = config
+                            .disk_check_concurrency_semaphore
+                            .acquire()
+                            .await
+                            .unwrap();
+
                         let run_inner = async |paths_to_scan: Option<Vec<PathBuf>>| -> Result<(), anyhow::Error> {
                             tracing::debug!(
                                 path = %cap_filesystem.base_path.display(),
@@ -376,6 +382,8 @@ impl Filesystem {
                                 }
                             }
                         }
+
+                        drop(permit);
 
                         tokio::select! {
                             _ = tokio::time::sleep(std::time::Duration::from_secs(
