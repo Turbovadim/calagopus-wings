@@ -107,7 +107,7 @@ mod post {
                 .ok();
         }
 
-        filesystem.async_create_dir_all(&parent).await?;
+        filesystem.async_create_dir_all(&root).await?;
 
         if filesystem.is_primary_server_fs()
             && !server

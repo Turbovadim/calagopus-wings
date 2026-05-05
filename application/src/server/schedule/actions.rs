@@ -168,8 +168,11 @@ impl ScheduleAction {
         server: &crate::server::Server,
         execution_context: &mut super::ScheduleExecutionContext,
     ) -> Result<(), Cow<'static, str>> {
-        if server.is_locked_state() {
-            return Err("server is in a locked state.".into());
+        if let Some(state) = server.locked_state() {
+            return Err(format!(
+                "server is in a locked state ({state}), cannot execute schedule action"
+            )
+            .into());
         }
 
         match self {

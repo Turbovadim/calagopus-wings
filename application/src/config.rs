@@ -170,11 +170,14 @@ fn system_passwd_directory() -> String {
 fn system_machine_id_enabled() -> bool {
     true
 }
+fn system_disk_check_concurrency() -> usize {
+    2
+}
 fn system_disk_check_interval() -> u64 {
     150
 }
 fn system_full_disk_check_every() -> u64 {
-    6
+    4
 }
 fn system_disk_check_use_inotify() -> bool {
     true
@@ -588,6 +591,8 @@ nestify::nest! {
                 pub enabled: bool,
             },
 
+            #[serde(default = "system_disk_check_concurrency")]
+            pub disk_check_concurrency: usize,
             #[serde(default = "system_disk_check_interval")]
             pub disk_check_interval: u64,
             #[serde(default = "system_full_disk_check_every")]
@@ -969,6 +974,7 @@ pub struct Config {
 
     pub path: String,
     pub ignore_certificate_errors: bool,
+    pub disk_check_concurrency_semaphore: tokio::sync::Semaphore,
     pub client: crate::remote::client::Client,
     pub jwt: crate::remote::jwt::JwtClient,
 }
@@ -988,6 +994,8 @@ impl Config {
         let config: InnerConfig = serde_norway::from_reader(reader)
             .context(format!("failed to parse config file {path}"))?;
 
+        let disk_check_concurrency_semaphore =
+            tokio::sync::Semaphore::new(config.system.disk_check_concurrency);
         let client = crate::remote::client::Client::new(&config, ignore_certificate_errors);
         let jwt = crate::remote::jwt::JwtClient::new(&config);
         let mut config = Self {
@@ -995,6 +1003,7 @@ impl Config {
 
             path: path.to_string(),
             ignore_certificate_errors,
+            disk_check_concurrency_semaphore,
             client,
             jwt,
         };
@@ -1154,7 +1163,7 @@ impl Config {
 
         // Do not allow directory paths with less than 1 segment (e.g. "/")
         const MIN_DIRECTORY_SEGMENTS: usize = 1;
-        let directories = vec![
+        let directories = &[
             (&self.system.root_directory, "root_directory"),
             (&self.system.log_directory, "log_directory"),
             (&self.system.vmount_directory, "vmount_directory"),

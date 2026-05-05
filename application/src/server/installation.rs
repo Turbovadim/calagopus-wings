@@ -162,8 +162,10 @@ impl ServerInstaller {
     }
 
     pub async fn start(self: &mut Arc<Self>, force: bool) -> Result<(), anyhow::Error> {
-        if self.server.is_locked_state() {
-            return Err(anyhow::anyhow!("server is in a locked state"));
+        if let Some(state) = self.server.locked_state() {
+            return Err(anyhow::anyhow!(
+                "server is in a locked state ({state}), cannot start installation process"
+            ));
         }
 
         self.server.installing.store(true, Ordering::SeqCst);

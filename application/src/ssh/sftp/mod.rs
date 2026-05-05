@@ -178,7 +178,7 @@ impl SftpSession {
 
     #[inline]
     async fn allow_action(&self) -> bool {
-        !self.server.is_locked_state()
+        self.server.locked_state().is_none()
             && self
                 .server
                 .user_permissions

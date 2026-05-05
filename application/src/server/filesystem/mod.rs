@@ -142,6 +142,12 @@ impl Filesystem {
                     let mut full_disk_check_counter = 0;
 
                     loop {
+                        let permit = config
+                            .disk_check_concurrency_semaphore
+                            .acquire()
+                            .await
+                            .unwrap();
+
                         let run_inner = async |paths_to_scan: Option<Vec<PathBuf>>| -> Result<(), anyhow::Error> {
                             tracing::debug!(
                                 path = %cap_filesystem.base_path.display(),
@@ -343,7 +349,9 @@ impl Filesystem {
                                 == 0
                             {
                                 None
-                            } else if use_server_notifier.load(Ordering::Relaxed) {
+                            } else if use_server_notifier.load(Ordering::Relaxed)
+                                && server_notifier.is_trusted()
+                            {
                                 let paths = server_notifier.take_modified_paths().await;
 
                                 tracing::debug!(
@@ -374,6 +382,8 @@ impl Filesystem {
                                 }
                             }
                         }
+
+                        drop(permit);
 
                         tokio::select! {
                             _ = tokio::time::sleep(std::time::Duration::from_secs(
@@ -416,7 +426,7 @@ impl Filesystem {
 
     #[inline]
     pub fn get_physical_cached_size(&self) -> u64 {
-        self.disk_usage_cached_logical.load(Ordering::Relaxed)
+        self.disk_usage_cached_physical.load(Ordering::Relaxed)
     }
 
     #[inline]
@@ -691,11 +701,76 @@ impl Filesystem {
             return (inner_path.to_path_buf(), archive_fs);
         }
 
+        let (mount_match, mount_infos) = {
+            let server_config = server.configuration.read().await;
+            let allowed_mounts = &server.app_state.config.allowed_mounts;
+
+            let mut match_result = None;
+            let mut infos = Vec::new();
+
+            for mount in &server_config.mounts {
+                let Some(relative_target) = mount.target.strip_prefix("/home/container/") else {
+                    continue;
+                };
+                if relative_target.is_empty()
+                    || allowed_mounts
+                        .iter()
+                        .all(|am| !mount.source.starts_with(&**am))
+                {
+                    continue;
+                }
+
+                infos.push(virtualfs::mount::MountInfo {
+                    relative_target: PathBuf::from(relative_target),
+                });
+
+                if match_result.is_none() {
+                    let relative_target_path = Path::new(relative_target);
+                    if path.starts_with(relative_target_path)
+                        && let Ok(inner_path) = path.strip_prefix(relative_target_path)
+                    {
+                        match_result = Some((
+                            inner_path.to_path_buf(),
+                            PathBuf::from(&*mount.source),
+                            mount.read_only,
+                        ));
+                    }
+                }
+            }
+
+            (match_result, infos)
+        };
+
+        if let Some((inner_path, source_path, read_only)) = mount_match {
+            match cap::CapFilesystem::new(source_path).await {
+                Ok(cap_fs) => {
+                    let mut fs = cap_fs.get_virtual(server.clone());
+                    fs.is_primary_server_fs = false;
+                    fs.is_writable = !read_only;
+
+                    return (inner_path, Arc::new(fs));
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        server = %server.uuid,
+                        "failed to open mount source for browsing: {:?}",
+                        err
+                    );
+                }
+            }
+        }
+
         let mut fs = self.cap_filesystem.get_virtual(server.clone());
         fs.is_primary_server_fs = true;
         fs.is_writable = true;
 
-        (path, Arc::new(fs))
+        (
+            path,
+            Arc::new(virtualfs::mount::VirtualMountFilesystem {
+                inner: fs,
+                mounts: mount_infos,
+            }),
+        )
     }
 
     pub async fn resolve_writable_fs(
@@ -703,11 +778,75 @@ impl Filesystem {
         server: &crate::server::Server,
         path: impl AsRef<Path>,
     ) -> (PathBuf, Arc<dyn VirtualWritableFilesystem>) {
+        let path = self.relative_path(path.as_ref());
+
+        let mount_match = {
+            let server_config = server.configuration.read().await;
+            let allowed_mounts = &server.app_state.config.allowed_mounts;
+
+            let mut result: Option<(PathBuf, PathBuf, bool)> = None;
+            for mount in &server_config.mounts {
+                let Some(relative_target) = mount.target.strip_prefix("/home/container/") else {
+                    continue;
+                };
+                if relative_target.is_empty() {
+                    continue;
+                }
+                if allowed_mounts
+                    .iter()
+                    .all(|am| !mount.source.starts_with(&**am))
+                {
+                    continue;
+                }
+
+                let relative_target_path = Path::new(relative_target);
+                if !path.starts_with(relative_target_path) {
+                    continue;
+                }
+
+                if let Ok(inner_path) = path.strip_prefix(relative_target_path) {
+                    result = Some((
+                        inner_path.to_path_buf(),
+                        PathBuf::from(&*mount.source),
+                        mount.read_only,
+                    ));
+                    break;
+                }
+            }
+            result
+        };
+
+        if let Some((inner_path, source_path, read_only)) = mount_match {
+            match cap::CapFilesystem::new(source_path).await {
+                Ok(cap_fs) => {
+                    let mut fs = cap_fs.get_virtual(server.clone());
+                    fs.is_primary_server_fs = false;
+                    fs.is_writable = !read_only;
+
+                    return (inner_path, Arc::new(fs));
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        server = %server.uuid,
+                        "failed to open mount source for writable fs: {:?}",
+                        err
+                    );
+                    if read_only {
+                        let mut fs = self.cap_filesystem.get_virtual(server.clone());
+                        fs.is_primary_server_fs = true;
+                        fs.is_writable = false;
+
+                        return (inner_path, Arc::new(fs));
+                    }
+                }
+            }
+        }
+
         let mut fs = self.cap_filesystem.get_virtual(server.clone());
         fs.is_primary_server_fs = true;
         fs.is_writable = true;
 
-        (self.relative_path(path.as_ref()), Arc::new(fs))
+        (path, Arc::new(fs))
     }
 
     pub async fn truncate_path(&self, path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
@@ -826,6 +965,12 @@ impl Filesystem {
                     file_read.reader,
                     Arc::clone(&progress),
                 );
+
+                if let Some(parent) = destination_path.parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    destination_filesystem.async_create_dir_all(&parent).await?;
+                }
 
                 let mut writer = destination_filesystem
                     .async_create_file(&destination_path)
@@ -1513,7 +1658,7 @@ impl Filesystem {
                             .as_ref()
                             .is_some_and(|m| m.is_file()))
                 {
-                    match self
+                    match filesystem
                         .async_open(symlink_destination.as_ref().unwrap_or(&path))
                         .await
                     {

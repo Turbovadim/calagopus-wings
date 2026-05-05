@@ -121,7 +121,7 @@ impl russh::server::Handler for SshSession {
             }
         };
 
-        if server.is_locked_state() {
+        if server.locked_state().is_some() {
             return Ok(Auth::reject());
         }
 
@@ -207,7 +207,7 @@ impl russh::server::Handler for SshSession {
             None => return Ok(Auth::reject()),
         };
 
-        if server.is_locked_state() {
+        if server.locked_state().is_some() {
             return Ok(Auth::reject());
         }
 

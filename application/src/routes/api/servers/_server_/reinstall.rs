@@ -45,10 +45,12 @@ mod post {
             },
         };
 
-        if server.is_locked_state() {
-            return ApiResponse::error("server is locked")
-                .with_status(StatusCode::CONFLICT)
-                .ok();
+        if let Some(state) = server.locked_state() {
+            return ApiResponse::error(&format!(
+                "server is in a locked state ({state}), cannot reinstall the server"
+            ))
+            .with_status(StatusCode::CONFLICT)
+            .ok();
         }
 
         server

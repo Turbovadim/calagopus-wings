@@ -1,7 +1,7 @@
 [package]
 name = "wings-rs"
 rust-version = { workspace = true }
-version = "1.0.3"
+version = "1.0.4"
 edition = "2024"
 
 [dependencies]
@@ -32,7 +32,7 @@ uuid = { workspace = true }
 rand = { workspace = true }
 tar = "0.4.44"
 zip = { version = "8.0.0", default-features = false, features = ["bzip2", "deflate", "time", "zstd", "lzma", "xz"] }
-sevenz-rust2 = { version = "0.20.0", features = ["deflate", "compress", "brotli", "zstd", "bzip2", "ppmd", "lz4"] }
+sevenz-rust2 = { version = "0.21.0", features = ["deflate", "compress", "brotli", "zstd", "bzip2", "ppmd", "lz4"] }
 flate2 = { version = "1.1.1", default-features = false, features = ["zlib-rs"] }
 sha2 = "0.11.0"
 ddup-bak = "0.8.0"

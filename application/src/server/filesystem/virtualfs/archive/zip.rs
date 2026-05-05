@@ -11,6 +11,7 @@ use crate::{
         },
         cap::FileType,
         encode_mode,
+        usage::SpaceDelta,
         virtualfs::{
             AsyncFileRead, AsyncReadableFileStream, ByteRange, DirectoryListing,
             DirectoryStreamWalk, DirectoryWalk, FileMetadata, FileRead, IsIgnoredFn,
@@ -120,9 +121,7 @@ impl VirtualZipArchive {
         mut archive: zip::ZipArchive<MultiReader>,
         archive_created: chrono::DateTime<chrono::Utc>,
     ) -> Self {
-        use crate::server::filesystem::usage::{DiskUsage, SpaceDelta};
-
-        let mut sizes = DiskUsage::default();
+        let mut sizes = crate::server::filesystem::usage::DiskUsage::default();
 
         for i in 0..archive.len() {
             let Ok(entry) = archive.by_index(i) else {

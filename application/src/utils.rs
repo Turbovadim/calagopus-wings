@@ -171,7 +171,7 @@ impl PortablePermissions {
         self.mode & 0o200 == 0
     }
 
-    pub fn into_os(self) -> Option<std::fs::Permissions> {
+    pub fn into_std_permissions(self) -> Option<std::fs::Permissions> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

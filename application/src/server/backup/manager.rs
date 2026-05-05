@@ -253,8 +253,10 @@ impl BackupManager {
         truncate_directory: bool,
         download_url: Option<compact_str::CompactString>,
     ) -> Result<(), anyhow::Error> {
-        if server.is_locked_state() {
-            return Err(anyhow::anyhow!("Server is in a locked state"));
+        if let Some(state) = server.locked_state() {
+            return Err(anyhow::anyhow!(
+                "server is in a locked state ({state}), cannot restore backup"
+            ));
         }
 
         server.restoring.store(true, Ordering::SeqCst);

@@ -22,6 +22,7 @@ use tokio::{
 pub mod archive;
 pub mod cap;
 pub mod functions;
+pub mod mount;
 
 #[derive(Clone, Copy)]
 pub struct ByteRange(Bound<u64>, Bound<u64>);

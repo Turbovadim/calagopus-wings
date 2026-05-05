@@ -137,12 +137,11 @@ mod post {
                                 Err(_) => continue,
                             };
 
-                            if filesystem.async_metadata(&to).await.is_ok()
-                                || (filesystem.is_primary_server_fs()
-                                    && server
-                                        .filesystem
-                                        .is_ignored(&from, metadata.file_type.is_dir())
-                                        .await)
+                            if filesystem.is_primary_server_fs()
+                                && server
+                                    .filesystem
+                                    .is_ignored(&from, metadata.file_type.is_dir())
+                                    .await
                             {
                                 continue;
                             }
@@ -160,6 +159,14 @@ mod post {
                                 .filesystem
                                 .resolve_writable_fs(&server, to_parent)
                                 .await;
+
+                            if destination_filesystem
+                                .async_metadata(&destination_root.join(to_file_name))
+                                .await
+                                .is_ok()
+                            {
+                                continue;
+                            }
 
                             if destination_filesystem.is_primary_server_fs()
                                 && server
